@@ -1,6 +1,12 @@
 # dfir
 Proofs created related to threat hunting
 
+## Disable-Folder-Execution.ps1
+```
+.\scripts\Disable-Folder-Execution.ps1
+```
+![](Disable-folder-Execution.gif)
+
 ## multi-yarGen.py
 ```
 python multi-yarGen.py -p "C:\\Users\\Administrator\\Desktop\\test5\" -r "C:\\Users\\Administrator\\Desktop\\rulesout"  
