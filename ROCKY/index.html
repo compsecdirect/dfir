@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kleared4 ROCKY EVTX Log Visualizer</title>
+
+  <!-- Styles -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
+  <link rel="stylesheet" href="style.css" />
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="main.js" defer></script>
+</head>
+<body class="bg-gray-900 text-white p-4">
+  <h1 class="text-3xl font-bold mb-4">CompSec Direct Event Log Visualizer</h1>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="bg-gray-800 p-4 rounded-xl shadow">
+      <canvas id="eventChart"></canvas>
+    </div>
+    <div class="bg-gray-800 p-4 rounded-xl shadow h-[400px] overflow-hidden">
+      <canvas id="levelChart" class="max-h-full w-full"></canvas>
+    </div>
+  </div>
+
+  <div class="mt-6">
+    <h2 class="text-xl font-semibold mb-2">Log Entries</h2>
+    <table id="logTable" class="display w-full text-black">
+      <thead>
+        <tr>
+          <th>Time Created</th>
+          <th>Event ID</th>
+          <th>Level</th>
+          <th>Provider</th>
+          <th>Message</th>
+          <th>MITRE ATT&CK</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</body>
+</html>

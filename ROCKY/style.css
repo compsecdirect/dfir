@@ -1,0 +1,47 @@
+/* style.css */
+body {
+  background-color: #111827;
+  color: white;
+  font-family: system-ui, sans-serif;
+}
+
+h1, h2 {
+  color: #e5e7eb;
+}
+
+canvas {
+  background-color: #1f2937;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+#levelChart {
+  max-height: 400px;
+  width: 100%;
+}
+
+.dataTables_wrapper {
+  background-color: #ffffff;
+}
+
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select {
+  background-color: #1f2937;
+  color: white;
+  border: 1px solid #374151;
+  padding: 0.25rem;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  background-color: #1f2937;
+  color: white !important;
+  border: 1px solid #374151;
+  border-radius: 0.25rem;
+  margin: 0 0.25rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+  background-color: #3b82f6;
+  color: white !important;
+}
