@@ -1,6 +1,10 @@
 # dfir
 Proofs created related to threat hunting
 
+## ROCKY
+
+![K4IRW-Rocky-Intro.gif](K4IRW-Rocky-Intro.gif)
+
 ## Disable-Folder-Execution.ps1
 ```
 .\scripts\Disable-Folder-Execution.ps1
