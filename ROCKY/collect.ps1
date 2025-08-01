@@ -2,7 +2,7 @@
 
 # Step 1: Export logs to JSON
 Write-Host "Exporting Windows logs to JSON..."
-$logs = Get-WinEvent -LogName System, Security -MaxEvents 1000 | ForEach-Object {
+$logs = Get-WinEvent -LogName System, Security,"Microsoft-Windows-Windows Firewall With Advanced Security/Firewall" -MaxEvents 1000 | ForEach-Object {
     [PSCustomObject]@{
         TimeCreated = $_.TimeCreated.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.ffffffZ')
         Id = $_.Id

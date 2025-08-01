@@ -2,7 +2,7 @@
 fetch('log_data.json')
   .then(res => res.json())
   .then(data => {
-    const suspiciousEvents = [4625, 4672, 4688, 4698, 7045, 1102, 4720, 4724, 4648, 106, 4732, 4728, 4776, 1149, 4663, 4670, 4657, 2004, 2005, 2006, 2007, 5140, 5142, 5143, 5144, 5145, 5168, 3000, 4656, 4658];
+    const suspiciousEvents = [4625, 4672, 4688, 4698, 7045, 1102, 4720, 4724, 4648, 106, 4732, 4728, 4776, 1149, 4663, 4670, 4657, 2004, 2006, 4946, 4947, 4948, 4950, 5140, 5142, 5143, 5144, 5145, 5168, 3000, 4656, 4658];
     const mitreMap = {
       4625: 'Brute Force (T1110)',
       4648: 'Use of Credentials (T1550)',
@@ -21,9 +21,10 @@ fetch('log_data.json')
       4670: 'Permission Modification (T1222)',
       4657: 'Registry Modification (T1112)',
       2004: 'Firewall Rule Added (T1562)',
-      2005: 'Firewall Rule Modified (T1562)',
       2006: 'Firewall Rule Deleted (T1562)',
-      2007: 'Firewall Settings Changed (T1562)',
+      4947: 'Firewall Rule Modified (T1562)',
+      4948: 'Firewall Rule Deleted (T1562)',
+      4950: 'Firewall Settings Changed (T1562)',
       5140: 'SMB Share Access (T1021.002)',
       5142: 'SMB Share Created (T1021.002)',
       5143: 'SMB Share Modified (T1021.002)',
