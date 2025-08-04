@@ -20,6 +20,9 @@ Y – Yes (Does all the above)
 
 - 📊 Visual charts for Event ID frequency and Event Levels
 - 🔎 Searchable, sortable table of raw log entries
+  - Highlight suspicious Event IDs (e.g., 4625, 4688, 4672)
+  - Export filtered logs to CSV
+  - Annotate events with MITRE ATT&CK mappings
 - 📁 Portable – runs locally with no server installation
 - 💻 Runs using PowerShell and Python as a simple web server (optional)
 
@@ -79,9 +82,9 @@ http://localhost:8000
 ---
 
 ## 🧩 Future Ideas
-- Highlight suspicious Event IDs (e.g., 4625, 4688, 4672)
-- Export filtered logs to CSV
-- Annotate events with MITRE ATT&CK mappings
+- Grouped Event ID's
+- Chart js to jQuery Filter ID matches
+- Pre-Parser for json data
 
 ---
 
