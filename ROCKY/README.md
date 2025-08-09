@@ -19,6 +19,7 @@ Y – Yes (Does all the above)
 ## 🔧 Features
 
 - 📊 Visual charts for Event ID frequency and Event Levels
+  - Chart.js to jQuery Filter Label matches
 - 🔎 Searchable, sortable table of raw log entries
   - Highlight suspicious Event IDs (e.g., 4625, 4688, 4672)
   - Export filtered logs to CSV
@@ -62,7 +63,7 @@ http://localhost:8000
 
 ## 📂 Files
 
-- `index.html` – Main web UI
+- `index.html` – Main web UI with jQuery and chart.js
 - `main.js` – Logic for charting and table population
 - `style.css` – Styling with Tailwind + dark theme
 - `log_data.json` – Output of log collection
@@ -79,11 +80,14 @@ http://localhost:8000
   ```
 - Ensure `python` is installed for the web server method, or modify `serve.ps1` to use a native PowerShell server
 
+* Uses optimistic logging; meaning that some of the useful EventID's and Mitre Attack mapping require the host to already collect non-default logs. 
+  - Firewall Logs  
+  - Object Access (SACL) 
+  - File Shares 
 ---
 
 ## 🧩 Future Ideas
 - Grouped Event ID's
-- Chart js to jQuery Filter ID matches
 - Pre-Parser for json data
 
 ---

@@ -101,12 +101,29 @@ fetch('log_data.json')
         }]
       },
       options: {
-        scales: {
-          y: {
-            beginAtZero: true
+        onClick: (event, elements, chart) => {
+            if (elements.length > 0) {
+              const chartElement = elements[0];
+              const index = chartElement.index;
+              const label = chart.data.labels[index];
+
+              // Set the value of the DataTables search input
+              $('#logTable_filter input').val(label).trigger('input');
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const id = context.label;
+                  const value = context.parsed.y;
+                  return `Event ID: ${id}, Count: ${value}`;
+                }
+              }
+            }
           }
         }
-      }
+
     });
 
     new Chart(document.getElementById('levelChart'), {
@@ -123,6 +140,29 @@ fetch('log_data.json')
             'rgba(75, 192, 192, 0.6)'
           ]
         }]
-      }
+      },
+        options: {
+            onClick: (event, elements, chart) => {
+                if (elements.length > 0) {
+                  const chartElement = elements[0];
+                  const index = chartElement.index;
+                  const label = chart.data.labels[index];
+
+                  // Set the value of the DataTables search input
+                  $('#logTable_filter input').val(label).trigger('input');
+                }
+              },
+              plugins: {
+                tooltip: {
+                  callbacks: {
+                    label: function(context) {
+                      const id = context.label;
+                      const value = context.parsed.y;
+                      return `Event ID: ${id}, Count: ${value}`;
+                    }
+                  }
+                }
+              }
+            }
     });
   });
