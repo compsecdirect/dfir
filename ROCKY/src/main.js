@@ -2,26 +2,29 @@
 fetch('log_data.json')
   .then(res => res.json())
   .then(data => {
-    const suspiciousEvents = [4625, 4672, 4688, 4698, 7045, 1102, 4720, 4724, 4648, 106, 4732, 4728, 4776, 1149, 4663, 4670, 4657, 2004, 2006, 4946, 4947, 4948, 4950, 5140, 5142, 5143, 5144, 5145, 5168, 3000, 4656, 4658];
+    const suspiciousEvents = [106, 1102, 1149, 2004, 2006, 3000, 4625, 4648, 4656, 4657, 4658, 4663, 4670, 4672, 4698, 4720, 4724, 4728, 4732, 4776, 4946, 4947, 4948, 4950, 5140, 5142, 5143, 5144, 5145, 5168, 7045];
     const mitreMap = {
-      4625: 'Brute Force (T1110)',
-      4648: 'Use of Credentials (T1550)',
-      4672: 'Priv. Esc. (T1078)',
-      4776: 'Credential Validation (T1110)',
-      1149: 'Remote Access (T1021.001)',
-      4698: 'Scheduled Task (T1053)',
       106: 'Scheduled Task (T1053)',
-      7045: 'Service Execution (T1543.003)',
-      4732: 'Permission Group Addition (T1098)',
-      4728: 'Permission Group Addition (T1098)',
-      4720: 'Account Creation (T1136)',
-      4724: 'Account Manipulation (T1098)',
       1102: 'Clear Logs (T1070.001)',
-      4663: 'File Access (T1005)',
-      4670: 'Permission Modification (T1222)',
-      4657: 'Registry Modification (T1112)',
+      1149: 'Remote Access (T1021.001)',
       2004: 'Firewall Rule Added (T1562)',
       2006: 'Firewall Rule Deleted (T1562)',
+      3000: 'SMB Session Info (T1021.002)',
+      4625: 'Brute Force (T1110)',
+      4648: 'Use of Credentials (T1550)',
+      4656: 'Object Access Attempted (T1005)',
+      4657: 'Registry Modification (T1112)',
+      4658: 'Object Access Closed (T1005)',
+      4663: 'File Access (T1005)',
+      4670: 'Permission Modification (T1222)',
+      4672: 'Priv. Esc. (T1078)',
+      4698: 'Scheduled Task (T1053)',
+      4720: 'Account Creation (T1136)',
+      4724: 'Account Manipulation (T1098)',
+      4728: 'Permission Group Addition (T1098)',
+      4732: 'Permission Group Addition (T1098)',
+      4776: 'Credential Validation (T1110)',
+      4946: 'Firewall Exception Change (T1562)',
       4947: 'Firewall Rule Modified (T1562)',
       4948: 'Firewall Rule Deleted (T1562)',
       4950: 'Firewall Settings Changed (T1562)',
@@ -31,9 +34,7 @@ fetch('log_data.json')
       5144: 'SMB Share Deleted (T1021.002)',
       5145: 'Detailed SMB Access (T1021.002)',
       5168: 'Directory Service Object Modified (T1482)',
-      3000: 'SMB Session Info (T1021.002)',
-      4656: 'Object Access Attempted (T1005)',
-      4658: 'Object Access Closed (T1005)'
+      7045: 'Service Execution (T1543.003)'
     };
 
     const table = $('#logTable').DataTable({
@@ -152,17 +153,6 @@ fetch('log_data.json')
                   $('#logTable_filter input').val(label).trigger('input');
                 }
               },
-              plugins: {
-                tooltip: {
-                  callbacks: {
-                    label: function(context) {
-                      const id = context.label;
-                      const value = context.parsed.y;
-                      return `Event ID: ${id}, Count: ${value}`;
-                    }
-                  }
-                }
-              }
             }
     });
   });
