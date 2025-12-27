@@ -28,9 +28,9 @@ Turn **Nmap scans** into clean, readable **diagrams.net / draw.io** network diag
 - 🖱️ Hover any node to see ports/services (and OS when available)  \
 
 ### Simple Network
-![](network-maps\nmap_small_office.xml.png)
+![](https://github.com/compsecdirect/dfir/blob/main/network-maps/nmap_small_office.xml.png)
 ### Medium Network
-![](network-maps\nmap_medium_corp_300.xml.png)
+![](https://github.com/compsecdirect/dfir/blob/main/network-maps/nmap_medium_corp_300.xmL.png)
 ---
 
 ## 📦 Requirements
