@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PCAPNG Traffic Movie v2 - DNS + Search</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08111f;
+      --panel: rgba(15, 23, 42, 0.88);
+      --panel-strong: rgba(15, 23, 42, 0.98);
+      --muted: #94a3b8;
+      --text: #e2e8f0;
+      --line: rgba(148, 163, 184, 0.18);
+      --accent: #38bdf8;
+      --accent2: #a78bfa;
+      --ok: #34d399;
+      --warn: #f59e0b;
+      --danger: #fb7185;
+      --remote: #60a5fa;
+      --local: #34d399;
+      --mac: #fbbf24;
+      --multicast: #f472b6;
+      --broadcast: #fb7185;
+      --tcp: #38bdf8;
+      --udp: #a78bfa;
+      --arp: #fbbf24;
+      --icmp: #fb7185;
+      --other: #cbd5e1;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(circle at 12% 5%, rgba(56,189,248,0.16), transparent 28%), radial-gradient(circle at 90% 12%, rgba(167,139,250,0.14), transparent 24%), var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+    body.dragging::after {
+      content: "Drop a .pcapng or .pcap file";
+      position: fixed;
+      inset: 18px;
+      border: 2px dashed rgba(56, 189, 248, 0.75);
+      border-radius: 24px;
+      background: rgba(2, 6, 23, 0.78);
+      display: grid;
+      place-items: center;
+      z-index: 50;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .app { display: grid; grid-template-rows: auto auto auto 1fr auto; height: 100%; min-width: 1120px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 18px 10px; border-bottom: 1px solid var(--line); background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(16px); }
+    .brand { display: flex; flex-direction: column; gap: 2px; min-width: 280px; }
+    .brand h1 { margin: 0; font-size: 18px; letter-spacing: 0.02em; }
+    .brand p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .file-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .file-name { color: var(--muted); font-size: 12px; max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    input[type="file"] { display: none; }
+    button, .file-button, select, input[type="number"], input[type="text"], input[type="search"] {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.85);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 13px;
+      line-height: 1;
+      box-shadow: inset 0 1px rgba(255,255,255,0.04);
+    }
+    input[type="text"], input[type="search"] { cursor: text; outline: none; width: 100%; }
+    input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(56, 189, 248, 0.72); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.09); }
+    button, .file-button, select { cursor: pointer; }
+    button:hover, .file-button:hover, select:hover { border-color: rgba(56, 189, 248, 0.55); }
+    button.primary { background: linear-gradient(135deg, rgba(56,189,248,0.24), rgba(167,139,250,0.22)); border-color: rgba(56,189,248,0.48); font-weight: 700; min-width: 86px; }
+    button:disabled, input:disabled { opacity: 0.45; cursor: not-allowed; }
+    .ghost { opacity: 0.84; }
+    .small-button { margin-top: 10px; padding: 7px 9px; font-size: 12px; }
+
+    .controls { display: grid; grid-template-columns: auto auto auto auto auto auto 1fr auto auto auto; gap: 10px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: rgba(15, 23, 42, 0.58); }
+    .control-group { display: flex; align-items: center; gap: 6px; }
+    .control-group label { color: var(--muted); font-size: 12px; }
+    .timeline-wrap { display: grid; grid-template-columns: 96px 1fr 96px; gap: 10px; align-items: center; min-width: 260px; }
+    .time-label { color: #cbd5e1; font-variant-numeric: tabular-nums; font-size: 12px; text-align: center; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; user-select: none; white-space: nowrap; }
+    .toggle input { accent-color: var(--accent); }
+
+    .filters { border-bottom: 1px solid var(--line); background: rgba(2,6,23,0.50); padding: 10px 18px; display: grid; gap: 8px; }
+    .filter-grid { display: grid; grid-template-columns: 1.4fr 1fr 0.85fr 0.85fr 0.7fr 1.5fr auto; gap: 10px; align-items: start; }
+    .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .field label { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; }
+    .field input { height: 34px; }
+    .chip-box { min-height: 34px; max-height: 76px; overflow: auto; display: flex; flex-wrap: wrap; gap: 5px; padding: 2px; border-radius: 12px; background: rgba(15,23,42,0.35); border: 1px solid rgba(148,163,184,0.12); }
+    .chip { border-radius: 999px; padding: 5px 8px; font-size: 11px; color: #cbd5e1; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148,163,184,0.20); }
+    .chip span { color: var(--muted); margin-left: 3px; }
+    .chip.active { color: white; border-color: rgba(56,189,248,0.72); background: linear-gradient(135deg, rgba(56,189,248,0.25), rgba(167,139,250,0.22)); }
+    .filter-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 116px; }
+    .filter-options { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+    .filter-status { font-size: 12px; color: #cbd5e1; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .muted { color: var(--muted); }
+    .kbd { border: 1px solid rgba(148,163,184,0.28); border-bottom-color: rgba(148,163,184,0.42); border-radius: 5px; padding: 1px 5px; font-size: 11px; color: #cbd5e1; background: rgba(15,23,42,0.8); }
+
+    main { display: grid; grid-template-columns: 1fr 380px; min-height: 0; }
+    .graph-shell { position: relative; min-height: 0; overflow: hidden; background: radial-gradient(circle at center, rgba(30,41,59,0.45), rgba(2,6,23,0.36)); }
+    svg { width: 100%; height: 100%; display: block; }
+    .grid-line { stroke: rgba(148, 163, 184, 0.06); stroke-width: 1; }
+
+    .overlay-empty, .overlay-progress {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, 82%);
+      background: rgba(15, 23, 42, 0.90); border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 22px; padding: 24px; text-align: center;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.38); backdrop-filter: blur(18px);
+    }
+    .overlay-empty h2, .overlay-progress h2 { margin: 0 0 8px; font-size: 22px; }
+    .overlay-empty p, .overlay-progress p { color: var(--muted); margin: 0 0 16px; line-height: 1.45; }
+    .progressbar { height: 9px; background: rgba(30,41,59,0.9); border-radius: 999px; overflow: hidden; border: 1px solid rgba(148,163,184,0.18); }
+    .progressbar > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 120ms ease; }
+    .hidden { display: none !important; }
+
+    aside { min-height: 0; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); padding: 12px; }
+    .panel { border: 1px solid rgba(148, 163, 184, 0.16); background: rgba(2, 6, 23, 0.38); border-radius: 16px; margin-bottom: 12px; overflow: hidden; }
+    .panel h3 { margin: 0; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid rgba(148, 163, 184, 0.14); color: #dbeafe; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .panel-body { padding: 10px 12px; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat { background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148, 163, 184, 0.13); padding: 9px; border-radius: 12px; }
+    .stat .value { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .stat .label { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .kv { display: grid; grid-template-columns: 112px 1fr; gap: 8px; font-size: 12px; padding: 4px 0; border-bottom: 1px solid rgba(148, 163, 184, 0.08); }
+    .kv:last-child { border-bottom: 0; }
+    .kv .k { color: var(--muted); }
+    .kv .v { color: #e2e8f0; overflow-wrap: anywhere; }
+    .mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .mini-table th { color: var(--muted); font-weight: 600; text-align: left; padding: 5px 2px; border-bottom: 1px solid rgba(148, 163, 184, 0.12); }
+    .mini-table td { padding: 5px 2px; border-bottom: 1px solid rgba(148, 163, 184, 0.06); vertical-align: top; overflow-wrap: anywhere; }
+    .mini-table td.num, .mini-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; font-size: 11px; border: 1px solid rgba(148,163,184,0.2); color: #cbd5e1; background: rgba(15, 23, 42, 0.7); margin: 2px 2px 2px 0; }
+    .pill-wrap { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+    .chip-note { margin-top: 9px; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+    .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--other); display: inline-block; }
+    .dot.tcp { background: var(--tcp); } .dot.udp { background: var(--udp); } .dot.arp { background: var(--arp); } .dot.icmp { background: var(--icmp); }
+    .legend { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px; border-top: 1px solid var(--line); background: rgba(2,6,23,0.72); color: var(--muted); font-size: 12px; }
+    .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .edge { fill: none; stroke-linecap: round; opacity: 0.68; filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.15)); }
+    .edge.tcp { stroke: var(--tcp); } .edge.udp { stroke: var(--udp); } .edge.arp { stroke: var(--arp); } .edge.icmp { stroke: var(--icmp); } .edge.other { stroke: var(--other); }
+    .edge-label { fill: rgba(226,232,240,0.72); font-size: 10px; paint-order: stroke; stroke: rgba(2,6,23,0.72); stroke-width: 3px; pointer-events: none; }
+    .particle { filter: drop-shadow(0 0 8px currentColor); }
+    .particle.tcp { fill: var(--tcp); color: var(--tcp); } .particle.udp { fill: var(--udp); color: var(--udp); } .particle.arp { fill: var(--arp); color: var(--arp); } .particle.icmp { fill: var(--icmp); color: var(--icmp); } .particle.other { fill: var(--other); color: var(--other); }
+    .node { cursor: pointer; }
+    .node circle { stroke-width: 1.8; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.35)); }
+    .node.local circle { fill: rgba(52, 211, 153, 0.92); stroke: #bbf7d0; }
+    .node.remote circle { fill: rgba(96, 165, 250, 0.88); stroke: #bfdbfe; }
+    .node.mac circle { fill: rgba(251, 191, 36, 0.88); stroke: #fde68a; }
+    .node.multicast circle { fill: rgba(244, 114, 182, 0.88); stroke: #fbcfe8; }
+    .node.broadcast circle { fill: rgba(251, 113, 133, 0.9); stroke: #fecdd3; }
+    .node.inactive circle { opacity: 0.34; }
+    .node text { fill: #f8fafc; font-size: 11px; font-weight: 650; paint-order: stroke; stroke: rgba(2,6,23,0.75); stroke-width: 3px; pointer-events: none; }
+    .node .subtext { fill: rgba(226,232,240,0.7); font-size: 9px; font-weight: 500; }
+    .halo { fill: none !important; stroke: rgba(56,189,248,0.34) !important; stroke-width: 9 !important; pointer-events: none; opacity: 1 !important; }
+
+    @media (max-width: 1260px) {
+      .app { min-width: 980px; }
+      main { grid-template-columns: 1fr 330px; }
+      .controls { grid-template-columns: auto auto auto auto 1fr auto; }
+      .control-group.optional { display: none; }
+      .filter-grid { grid-template-columns: 1fr 1fr 1fr; }
+      .filter-actions { flex-direction: row; grid-column: span 3; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <h1>PCAPNG Traffic Movie v2</h1>
+        <p>Accelerated flow playback with DNS labels, host/port/protocol filters, and searchable packets</p>
+      </div>
+      <div class="file-actions">
+        <span id="fileName" class="file-name">No capture loaded</span>
+        <label for="fileInput" class="file-button">Open capture</label>
+        <input id="fileInput" type="file" accept=".pcapng,.pcap,application/octet-stream" />
+      </div>
+    </header>
+
+    <section class="controls">
+      <button id="playPause" class="primary" disabled>Play</button>
+      <div class="control-group">
+        <button id="back10" disabled title="Rewind 10 seconds">-10s</button>
+        <button id="backStep" disabled title="Previous active window">-1 window</button>
+        <button id="forwardStep" disabled title="Next active window">+1 window</button>
+        <button id="forward10" disabled title="Fast forward 10 seconds">+10s</button>
+      </div>
+      <div class="control-group">
+        <button id="prevMatch" disabled title="Jump to previous matching packet">Prev match</button>
+        <button id="nextMatch" disabled title="Jump to next matching packet">Next match</button>
+      </div>
+      <div class="control-group">
+        <label for="speedSelect">Speed</label>
+        <select id="speedSelect">
+          <option value="1">1x</option>
+          <option value="5">5x</option>
+          <option value="10">10x</option>
+          <option value="30" selected>30x</option>
+          <option value="60">60x</option>
+          <option value="120">120x</option>
+          <option value="300">300x</option>
+          <option value="600">600x</option>
+          <option value="1200">1200x</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="windowSelect">Window</label>
+        <select id="windowSelect">
+          <option value="1" selected>1 sec</option>
+          <option value="2">2 sec</option>
+          <option value="5">5 sec</option>
+          <option value="10">10 sec</option>
+          <option value="30">30 sec</option>
+        </select>
+      </div>
+      <div class="control-group optional">
+        <label for="maxNodes">Max hosts</label>
+        <input id="maxNodes" type="range" min="30" max="500" value="160" step="10" />
+        <span id="maxNodesLabel" class="time-label">160</span>
+      </div>
+      <label class="toggle optional"><input id="showAll" type="checkbox" /> include discovered hosts</label>
+      <div class="timeline-wrap">
+        <span id="currentTime" class="time-label">00:00.000</span>
+        <input id="timeline" type="range" min="0" max="0" value="0" step="0.001" disabled />
+        <span id="durationTime" class="time-label">00:00.000</span>
+      </div>
+      <button id="snapshot" class="ghost" disabled>Save SVG</button>
+      <button id="resetView" class="ghost" disabled>Reset view</button>
+      <span id="fps" class="time-label">0 fps</span>
+    </section>
+
+    <section class="filters">
+      <div class="filter-grid">
+        <div class="field">
+          <label for="searchText">Search decoded fields</label>
+          <input id="searchText" type="search" placeholder="domain, IP, SYN, DNS answer, flow detail" disabled />
+        </div>
+        <div class="field">
+          <label for="hostFilter">Any host / DNS name</label>
+          <input id="hostFilter" type="text" placeholder="google, 10.10.10.4, .local" disabled />
+        </div>
+        <div class="field">
+          <label for="srcFilter">Source host</label>
+          <input id="srcFilter" type="text" placeholder="source name or IP" disabled />
+        </div>
+        <div class="field">
+          <label for="dstFilter">Destination host</label>
+          <input id="dstFilter" type="text" placeholder="destination name or IP" disabled />
+        </div>
+        <div class="field">
+          <label for="portFilter">Ports</label>
+          <input id="portFilter" type="text" placeholder="53,443,8000-9000" disabled />
+        </div>
+        <div class="field">
+          <label>Protocols / services</label>
+          <div id="protocolChips" class="chip-box"><span class="muted">Protocols appear after a capture is loaded.</span></div>
+        </div>
+        <div class="filter-actions">
+          <button id="clearFilters" class="ghost" disabled>Clear filters</button>
+          <label class="toggle"><input id="preferDns" type="checkbox" checked disabled /> DNS labels</label>
+          <label class="toggle"><input id="showIpUnderName" type="checkbox" checked disabled /> show IP</label>
+        </div>
+      </div>
+      <div class="filter-status">
+        <span id="filterStatus">Load a capture, then search by host name, IP address, port, protocol, service, DNS question, DNS answer, or flow text.</span>
+        <span><span class="kbd">Space</span> play/pause <span class="kbd">N</span>/<span class="kbd">P</span> next/previous match</span>
+      </div>
+    </section>
+
+    <main>
+      <section id="graphShell" class="graph-shell">
+        <svg id="graphSvg" role="img" aria-label="Animated network graph">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L8,4 L0,8 z" fill="rgba(226,232,240,0.82)"></path>
+            </marker>
+          </defs>
+          <g id="gridLayer"></g>
+          <g id="edgesLayer"></g>
+          <g id="particlesLayer"></g>
+          <g id="nodesLayer"></g>
+        </svg>
+        <div id="emptyOverlay" class="overlay-empty">
+          <h2>Open a capture to start the movie</h2>
+          <p>Drop a <strong>.pcapng</strong> or <strong>.pcap</strong> file here. Parsing, DNS extraction, and filtering all happen locally in your browser.</p>
+          <label for="fileInput" class="file-button">Choose capture</label>
+        </div>
+        <div id="progressOverlay" class="overlay-progress hidden">
+          <h2>Parsing capture</h2>
+          <p id="progressText">Reading packet blocks...</p>
+          <div class="progressbar"><div id="progressFill"></div></div>
+        </div>
+      </section>
+
+      <aside>
+        <section class="panel">
+          <h3>Playback window <span id="windowRange" class="pill">--</span></h3>
+          <div class="panel-body">
+            <div class="stat-grid">
+              <div class="stat"><div id="windowPackets" class="value">0</div><div class="label">matching packets visible</div></div>
+              <div class="stat"><div id="windowHosts" class="value">0</div><div class="label">active hosts</div></div>
+              <div class="stat"><div id="windowBytes" class="value">0 B</div><div class="label">bytes in window</div></div>
+              <div class="stat"><div id="windowEdges" class="value">0</div><div class="label">directed flows</div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Capture summary</h3>
+          <div id="summaryPanel" class="panel-body">
+            <div class="kv"><span class="k">Status</span><span class="v">No capture loaded</span></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>DNS resolution</h3>
+          <div id="dnsPanel" class="panel-body">
+            <div class="kv"><span class="k">Status</span><span class="v">DNS names appear after parsing DNS, mDNS, LLMNR, or PCAPNG NRB records.</span></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Protocols in current window</h3>
+          <div class="panel-body">
+            <div class="legend" id="protocolLegend"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Top flows in current window</h3>
+          <div class="panel-body">
+            <table class="mini-table">
+              <thead><tr><th>Flow</th><th>Svc</th><th>Ports</th><th class="num">Pkts</th></tr></thead>
+              <tbody id="topFlows"><tr><td colspan="4" class="muted">No data</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Packet hits in current window</h3>
+          <div class="panel-body">
+            <table class="mini-table">
+              <thead><tr><th>Time</th><th>Flow</th><th>Svc</th><th>Detail</th></tr></thead>
+              <tbody id="packetHits"><tr><td colspan="4" class="muted">No data</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Selected host</h3>
+          <div id="hostPanel" class="panel-body">
+            <div class="kv"><span class="k">Tip</span><span class="v">Click a node to pin host details here.</span></div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <footer>
+      <div id="status" class="status">Ready. Supports DNS/mDNS/LLMNR extraction, PCAPNG name-resolution blocks, and host/port/protocol filters.</div>
+      <div>Local-only single-file app</div>
+    </footer>
+  </div>
+
+  <script id="workerSource" type="text/plain">
+__WORKER_SOURCE__
+  </script>
+  <script>
+__APP_SOURCE__
+  </script>
+</body>
+</html>

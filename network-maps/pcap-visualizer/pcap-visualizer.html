@@ -1,0 +1,2593 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PCAPNG Traffic Movie v2 - DNS + Search</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #08111f;
+      --panel: rgba(15, 23, 42, 0.88);
+      --panel-strong: rgba(15, 23, 42, 0.98);
+      --muted: #94a3b8;
+      --text: #e2e8f0;
+      --line: rgba(148, 163, 184, 0.18);
+      --accent: #38bdf8;
+      --accent2: #a78bfa;
+      --ok: #34d399;
+      --warn: #f59e0b;
+      --danger: #fb7185;
+      --remote: #60a5fa;
+      --local: #34d399;
+      --mac: #fbbf24;
+      --multicast: #f472b6;
+      --broadcast: #fb7185;
+      --tcp: #38bdf8;
+      --udp: #a78bfa;
+      --arp: #fbbf24;
+      --icmp: #fb7185;
+      --other: #cbd5e1;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(circle at 12% 5%, rgba(56,189,248,0.16), transparent 28%), radial-gradient(circle at 90% 12%, rgba(167,139,250,0.14), transparent 24%), var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+    body.dragging::after {
+      content: "Drop a .pcapng or .pcap file";
+      position: fixed;
+      inset: 18px;
+      border: 2px dashed rgba(56, 189, 248, 0.75);
+      border-radius: 24px;
+      background: rgba(2, 6, 23, 0.78);
+      display: grid;
+      place-items: center;
+      z-index: 50;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .app { display: grid; grid-template-rows: auto auto auto 1fr auto; height: 100%; min-width: 1120px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 18px 10px; border-bottom: 1px solid var(--line); background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(16px); }
+    .brand { display: flex; flex-direction: column; gap: 2px; min-width: 280px; }
+    .brand h1 { margin: 0; font-size: 18px; letter-spacing: 0.02em; }
+    .brand p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .file-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .file-name { color: var(--muted); font-size: 12px; max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    input[type="file"] { display: none; }
+    button, .file-button, select, input[type="number"], input[type="text"], input[type="search"] {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(15, 23, 42, 0.85);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 13px;
+      line-height: 1;
+      box-shadow: inset 0 1px rgba(255,255,255,0.04);
+    }
+    input[type="text"], input[type="search"] { cursor: text; outline: none; width: 100%; }
+    input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(56, 189, 248, 0.72); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.09); }
+    button, .file-button, select { cursor: pointer; }
+    button:hover, .file-button:hover, select:hover { border-color: rgba(56, 189, 248, 0.55); }
+    button.primary { background: linear-gradient(135deg, rgba(56,189,248,0.24), rgba(167,139,250,0.22)); border-color: rgba(56,189,248,0.48); font-weight: 700; min-width: 86px; }
+    button:disabled, input:disabled { opacity: 0.45; cursor: not-allowed; }
+    .ghost { opacity: 0.84; }
+    .small-button { margin-top: 10px; padding: 7px 9px; font-size: 12px; }
+
+    .controls { display: grid; grid-template-columns: auto auto auto auto auto auto 1fr auto auto auto; gap: 10px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: rgba(15, 23, 42, 0.58); }
+    .control-group { display: flex; align-items: center; gap: 6px; }
+    .control-group label { color: var(--muted); font-size: 12px; }
+    .timeline-wrap { display: grid; grid-template-columns: 96px 1fr 96px; gap: 10px; align-items: center; min-width: 260px; }
+    .time-label { color: #cbd5e1; font-variant-numeric: tabular-nums; font-size: 12px; text-align: center; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; user-select: none; white-space: nowrap; }
+    .toggle input { accent-color: var(--accent); }
+
+    .filters { border-bottom: 1px solid var(--line); background: rgba(2,6,23,0.50); padding: 10px 18px; display: grid; gap: 8px; }
+    .filter-grid { display: grid; grid-template-columns: 1.4fr 1fr 0.85fr 0.85fr 0.7fr 1.5fr auto; gap: 10px; align-items: start; }
+    .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .field label { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; }
+    .field input { height: 34px; }
+    .chip-box { min-height: 34px; max-height: 76px; overflow: auto; display: flex; flex-wrap: wrap; gap: 5px; padding: 2px; border-radius: 12px; background: rgba(15,23,42,0.35); border: 1px solid rgba(148,163,184,0.12); }
+    .chip { border-radius: 999px; padding: 5px 8px; font-size: 11px; color: #cbd5e1; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148,163,184,0.20); }
+    .chip span { color: var(--muted); margin-left: 3px; }
+    .chip.active { color: white; border-color: rgba(56,189,248,0.72); background: linear-gradient(135deg, rgba(56,189,248,0.25), rgba(167,139,250,0.22)); }
+    .filter-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 116px; }
+    .filter-options { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+    .filter-status { font-size: 12px; color: #cbd5e1; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .muted { color: var(--muted); }
+    .kbd { border: 1px solid rgba(148,163,184,0.28); border-bottom-color: rgba(148,163,184,0.42); border-radius: 5px; padding: 1px 5px; font-size: 11px; color: #cbd5e1; background: rgba(15,23,42,0.8); }
+
+    main { display: grid; grid-template-columns: 1fr 380px; min-height: 0; }
+    .graph-shell { position: relative; min-height: 0; overflow: hidden; background: radial-gradient(circle at center, rgba(30,41,59,0.45), rgba(2,6,23,0.36)); }
+    svg { width: 100%; height: 100%; display: block; }
+    .grid-line { stroke: rgba(148, 163, 184, 0.06); stroke-width: 1; }
+
+    .overlay-empty, .overlay-progress {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(620px, 82%);
+      background: rgba(15, 23, 42, 0.90); border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 22px; padding: 24px; text-align: center;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.38); backdrop-filter: blur(18px);
+    }
+    .overlay-empty h2, .overlay-progress h2 { margin: 0 0 8px; font-size: 22px; }
+    .overlay-empty p, .overlay-progress p { color: var(--muted); margin: 0 0 16px; line-height: 1.45; }
+    .progressbar { height: 9px; background: rgba(30,41,59,0.9); border-radius: 999px; overflow: hidden; border: 1px solid rgba(148,163,184,0.18); }
+    .progressbar > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 120ms ease; }
+    .hidden { display: none !important; }
+
+    aside { min-height: 0; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); padding: 12px; }
+    .panel { border: 1px solid rgba(148, 163, 184, 0.16); background: rgba(2, 6, 23, 0.38); border-radius: 16px; margin-bottom: 12px; overflow: hidden; }
+    .panel h3 { margin: 0; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid rgba(148, 163, 184, 0.14); color: #dbeafe; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .panel-body { padding: 10px 12px; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat { background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148, 163, 184, 0.13); padding: 9px; border-radius: 12px; }
+    .stat .value { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .stat .label { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .kv { display: grid; grid-template-columns: 112px 1fr; gap: 8px; font-size: 12px; padding: 4px 0; border-bottom: 1px solid rgba(148, 163, 184, 0.08); }
+    .kv:last-child { border-bottom: 0; }
+    .kv .k { color: var(--muted); }
+    .kv .v { color: #e2e8f0; overflow-wrap: anywhere; }
+    .mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .mini-table th { color: var(--muted); font-weight: 600; text-align: left; padding: 5px 2px; border-bottom: 1px solid rgba(148, 163, 184, 0.12); }
+    .mini-table td { padding: 5px 2px; border-bottom: 1px solid rgba(148, 163, 184, 0.06); vertical-align: top; overflow-wrap: anywhere; }
+    .mini-table td.num, .mini-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px; font-size: 11px; border: 1px solid rgba(148,163,184,0.2); color: #cbd5e1; background: rgba(15, 23, 42, 0.7); margin: 2px 2px 2px 0; }
+    .pill-wrap { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+    .chip-note { margin-top: 9px; margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+    .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--other); display: inline-block; }
+    .dot.tcp { background: var(--tcp); } .dot.udp { background: var(--udp); } .dot.arp { background: var(--arp); } .dot.icmp { background: var(--icmp); }
+    .legend { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px; border-top: 1px solid var(--line); background: rgba(2,6,23,0.72); color: var(--muted); font-size: 12px; }
+    .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .edge { fill: none; stroke-linecap: round; opacity: 0.68; filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.15)); }
+    .edge.tcp { stroke: var(--tcp); } .edge.udp { stroke: var(--udp); } .edge.arp { stroke: var(--arp); } .edge.icmp { stroke: var(--icmp); } .edge.other { stroke: var(--other); }
+    .edge-label { fill: rgba(226,232,240,0.72); font-size: 10px; paint-order: stroke; stroke: rgba(2,6,23,0.72); stroke-width: 3px; pointer-events: none; }
+    .particle { filter: drop-shadow(0 0 8px currentColor); }
+    .particle.tcp { fill: var(--tcp); color: var(--tcp); } .particle.udp { fill: var(--udp); color: var(--udp); } .particle.arp { fill: var(--arp); color: var(--arp); } .particle.icmp { fill: var(--icmp); color: var(--icmp); } .particle.other { fill: var(--other); color: var(--other); }
+    .node { cursor: pointer; }
+    .node circle { stroke-width: 1.8; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.35)); }
+    .node.local circle { fill: rgba(52, 211, 153, 0.92); stroke: #bbf7d0; }
+    .node.remote circle { fill: rgba(96, 165, 250, 0.88); stroke: #bfdbfe; }
+    .node.mac circle { fill: rgba(251, 191, 36, 0.88); stroke: #fde68a; }
+    .node.multicast circle { fill: rgba(244, 114, 182, 0.88); stroke: #fbcfe8; }
+    .node.broadcast circle { fill: rgba(251, 113, 133, 0.9); stroke: #fecdd3; }
+    .node.inactive circle { opacity: 0.34; }
+    .node text { fill: #f8fafc; font-size: 11px; font-weight: 650; paint-order: stroke; stroke: rgba(2,6,23,0.75); stroke-width: 3px; pointer-events: none; }
+    .node .subtext { fill: rgba(226,232,240,0.7); font-size: 9px; font-weight: 500; }
+    .halo { fill: none !important; stroke: rgba(56,189,248,0.34) !important; stroke-width: 9 !important; pointer-events: none; opacity: 1 !important; }
+
+    @media (max-width: 1260px) {
+      .app { min-width: 980px; }
+      main { grid-template-columns: 1fr 330px; }
+      .controls { grid-template-columns: auto auto auto auto 1fr auto; }
+      .control-group.optional { display: none; }
+      .filter-grid { grid-template-columns: 1fr 1fr 1fr; }
+      .filter-actions { flex-direction: row; grid-column: span 3; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <h1>PCAPNG Traffic Movie v2</h1>
+        <p>Accelerated flow playback with persistent hosts, DNS labels, host/port/protocol filters, and searchable packets</p>
+      </div>
+      <div class="file-actions">
+        <span id="fileName" class="file-name">No capture loaded</span>
+        <label for="fileInput" class="file-button">Open capture</label>
+        <input id="fileInput" type="file" accept=".pcapng,.pcap,application/octet-stream" />
+      </div>
+    </header>
+
+    <section class="controls">
+      <button id="playPause" class="primary" disabled>Play</button>
+      <div class="control-group">
+        <button id="back10" disabled title="Rewind 10 seconds">-10s</button>
+        <button id="backStep" disabled title="Previous active window">-1 window</button>
+        <button id="forwardStep" disabled title="Next active window">+1 window</button>
+        <button id="forward10" disabled title="Fast forward 10 seconds">+10s</button>
+      </div>
+      <div class="control-group">
+        <button id="prevMatch" disabled title="Jump to previous matching packet">Prev match</button>
+        <button id="nextMatch" disabled title="Jump to next matching packet">Next match</button>
+      </div>
+      <div class="control-group">
+        <label for="speedSelect">Speed</label>
+        <select id="speedSelect">
+          <option value="1">1x</option>
+          <option value="5">5x</option>
+          <option value="10">10x</option>
+          <option value="30" selected>30x</option>
+          <option value="60">60x</option>
+          <option value="120">120x</option>
+          <option value="300">300x</option>
+          <option value="600">600x</option>
+          <option value="1200">1200x</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="windowSelect">Window</label>
+        <select id="windowSelect">
+          <option value="1" selected>1 sec</option>
+          <option value="2">2 sec</option>
+          <option value="5">5 sec</option>
+          <option value="10">10 sec</option>
+          <option value="30">30 sec</option>
+        </select>
+      </div>
+      <div class="control-group optional">
+        <label for="maxNodes">Max hosts</label>
+        <input id="maxNodes" type="range" min="30" max="500" value="160" step="10" />
+        <span id="maxNodesLabel" class="time-label">160</span>
+      </div>
+      <div class="control-group optional">
+        <label for="hostSpacing">Host spacing</label>
+        <input id="hostSpacing" type="range" min="0.8" max="2.2" value="1.25" step="0.05" />
+        <span id="hostSpacingLabel" class="time-label">1.25x</span>
+      </div>
+      <label class="toggle optional"><input id="showAll" type="checkbox" checked /> keep discovered hosts visible</label>
+      <div class="timeline-wrap">
+        <span id="currentTime" class="time-label">00:00.000</span>
+        <input id="timeline" type="range" min="0" max="0" value="0" step="0.001" disabled />
+        <span id="durationTime" class="time-label">00:00.000</span>
+      </div>
+      <button id="snapshot" class="ghost" disabled>Save SVG</button>
+      <button id="resetView" class="ghost" disabled>Reset view</button>
+      <span id="fps" class="time-label">0 fps</span>
+    </section>
+
+    <section class="filters">
+      <div class="filter-grid">
+        <div class="field">
+          <label for="searchText">Search decoded fields</label>
+          <input id="searchText" type="search" placeholder="domain, IP, SYN, DNS answer, flow detail" disabled />
+        </div>
+        <div class="field">
+          <label for="hostFilter">Any host / DNS name</label>
+          <input id="hostFilter" type="text" placeholder="google, 10.10.10.4, .local" disabled />
+        </div>
+        <div class="field">
+          <label for="srcFilter">Source host</label>
+          <input id="srcFilter" type="text" placeholder="source name or IP" disabled />
+        </div>
+        <div class="field">
+          <label for="dstFilter">Destination host</label>
+          <input id="dstFilter" type="text" placeholder="destination name or IP" disabled />
+        </div>
+        <div class="field">
+          <label for="portFilter">Ports</label>
+          <input id="portFilter" type="text" placeholder="53,443,8000-9000" disabled />
+        </div>
+        <div class="field">
+          <label>Protocols / services</label>
+          <div id="protocolChips" class="chip-box"><span class="muted">Protocols appear after a capture is loaded.</span></div>
+        </div>
+        <div class="filter-actions">
+          <button id="clearFilters" class="ghost" disabled>Clear filters</button>
+          <label class="toggle"><input id="preferDns" type="checkbox" checked disabled /> DNS labels</label>
+          <label class="toggle"><input id="showIpUnderName" type="checkbox" checked disabled /> show IP</label>
+        </div>
+      </div>
+      <div class="filter-status">
+        <span id="filterStatus">Load a capture, then search by host name, IP address, port, protocol, service, DNS question, DNS answer, or flow text.</span>
+        <span><span class="kbd">Space</span> play/pause <span class="kbd">N</span>/<span class="kbd">P</span> next/previous match</span>
+      </div>
+    </section>
+
+    <main>
+      <section id="graphShell" class="graph-shell">
+        <svg id="graphSvg" role="img" aria-label="Animated network graph">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L8,4 L0,8 z" fill="rgba(226,232,240,0.82)"></path>
+            </marker>
+          </defs>
+          <g id="gridLayer"></g>
+          <g id="edgesLayer"></g>
+          <g id="particlesLayer"></g>
+          <g id="nodesLayer"></g>
+        </svg>
+        <div id="emptyOverlay" class="overlay-empty">
+          <h2>Open a capture to start the movie</h2>
+          <p>Drop a <strong>.pcapng</strong> or <strong>.pcap</strong> file here. Parsing, DNS extraction, and filtering all happen locally in your browser.</p>
+          <label for="fileInput" class="file-button">Choose capture</label>
+        </div>
+        <div id="progressOverlay" class="overlay-progress hidden">
+          <h2>Parsing capture</h2>
+          <p id="progressText">Reading packet blocks...</p>
+          <div class="progressbar"><div id="progressFill"></div></div>
+        </div>
+      </section>
+
+      <aside>
+        <section class="panel">
+          <h3>Playback window <span id="windowRange" class="pill">--</span></h3>
+          <div class="panel-body">
+            <div class="stat-grid">
+              <div class="stat"><div id="windowPackets" class="value">0</div><div class="label">matching packets visible</div></div>
+              <div class="stat"><div id="windowHosts" class="value">0</div><div class="label">active hosts</div></div>
+              <div class="stat"><div id="windowBytes" class="value">0 B</div><div class="label">bytes in window</div></div>
+              <div class="stat"><div id="windowEdges" class="value">0</div><div class="label">directed flows</div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Capture summary</h3>
+          <div id="summaryPanel" class="panel-body">
+            <div class="kv"><span class="k">Status</span><span class="v">No capture loaded</span></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>DNS resolution</h3>
+          <div id="dnsPanel" class="panel-body">
+            <div class="kv"><span class="k">Status</span><span class="v">DNS names appear after parsing DNS, mDNS, LLMNR, or PCAPNG NRB records.</span></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Protocols in current window</h3>
+          <div class="panel-body">
+            <div class="legend" id="protocolLegend"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Top flows in current window</h3>
+          <div class="panel-body">
+            <table class="mini-table">
+              <thead><tr><th>Flow</th><th>Svc</th><th>Ports</th><th class="num">Pkts</th></tr></thead>
+              <tbody id="topFlows"><tr><td colspan="4" class="muted">No data</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Packet hits in current window</h3>
+          <div class="panel-body">
+            <table class="mini-table">
+              <thead><tr><th>Time</th><th>Flow</th><th>Svc</th><th>Detail</th></tr></thead>
+              <tbody id="packetHits"><tr><td colspan="4" class="muted">No data</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Selected host</h3>
+          <div id="hostPanel" class="panel-body">
+            <div class="kv"><span class="k">Tip</span><span class="v">Click a node to pin host details here.</span></div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <footer>
+      <div id="status" class="status">Ready. Supports persistent host placement, DNS/mDNS/LLMNR extraction, PCAPNG name-resolution blocks, and host/port/protocol filters.</div>
+      <div>Local-only single-file app</div>
+    </footer>
+  </div>
+
+  <script id="workerSource" type="text/plain">
+/*
+  PCAPNG Traffic Movie v2 parser core
+  Standalone browser/worker compatible parser for PCAPNG and classic PCAP.
+  Decodes Ethernet, raw IPv4/IPv6, Linux cooked captures, TCP, UDP, ICMP,
+  ARP, DNS, mDNS and LLMNR for host-flow visualization and filtering.
+*/
+
+const BLOCK_SHB = 0x0a0d0d0a;
+const BLOCK_IDB = 0x00000001;
+const BLOCK_PB_OBSOLETE = 0x00000002;
+const BLOCK_SPB = 0x00000003;
+const BLOCK_NRB = 0x00000004;
+const BLOCK_ISB = 0x00000005;
+const BLOCK_EPB = 0x00000006;
+const BYTE_ORDER_MAGIC = 0x1a2b3c4d;
+const TWO_32 = 4294967296;
+
+const LINKTYPE_ETHERNET = 1;
+const LINKTYPE_RAW = 101;
+const LINKTYPE_LINUX_SLL = 113;
+const LINKTYPE_IPV4 = 228;
+const LINKTYPE_IPV6 = 229;
+const LINKTYPE_LINUX_SLL2 = 276;
+
+const DNS_PORTS = new Set([53, 5353, 5355]);
+const MAX_DNS_RECORDS = 250;
+const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
+
+function align4(n) { return (n + 3) & ~3; }
+
+function bump(map, key, inc = 1) {
+  key = String(key || 'unknown');
+  map[key] = (map[key] || 0) + inc;
+}
+
+function sortedEntriesFromMapObj(obj) {
+  return Object.entries(obj).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+}
+
+function blockName(type) {
+  switch (type) {
+    case BLOCK_SHB: return 'SHB';
+    case BLOCK_IDB: return 'IDB';
+    case BLOCK_EPB: return 'EPB';
+    case BLOCK_SPB: return 'SPB';
+    case BLOCK_NRB: return 'NRB';
+    case BLOCK_ISB: return 'ISB';
+    case BLOCK_PB_OBSOLETE: return 'PB_OBSOLETE';
+    default: return '0x' + type.toString(16).padStart(8, '0');
+  }
+}
+
+function safeDecode(bytes, start = 0, length = bytes.length - start) {
+  const end = Math.max(start, Math.min(bytes.length, start + length));
+  let trimmedEnd = end;
+  while (trimmedEnd > start && bytes[trimmedEnd - 1] === 0) trimmedEnd -= 1;
+  const slice = bytes.subarray(start, trimmedEnd);
+  if (!textDecoder) {
+    let s = '';
+    for (const b of slice) s += String.fromCharCode(b);
+    return s;
+  }
+  try { return textDecoder.decode(slice); }
+  catch { return Array.from(slice).map(b => String.fromCharCode(b)).join(''); }
+}
+
+function decodeText(view, start, length) {
+  const bytes = new Uint8Array(view.buffer, view.byteOffset + start, length);
+  return safeDecode(bytes);
+}
+
+function parseOptions(view, start, end, little) {
+  const options = [];
+  let off = start;
+  while (off + 4 <= end) {
+    const code = view.getUint16(off, little);
+    const length = view.getUint16(off + 2, little);
+    off += 4;
+    if (code === 0) break;
+    if (off + length > end) break;
+    options.push({ code, start: off, length });
+    off += align4(length);
+  }
+  return options;
+}
+
+function parseInterfaceOptions(view, start, end, little) {
+  const opts = parseOptions(view, start, end, little);
+  const result = { tsresol: 1e-6, tsoffset: 0, name: '', description: '', comment: '' };
+  for (const opt of opts) {
+    if (opt.code === 9 && opt.length >= 1) {
+      const v = view.getUint8(opt.start);
+      result.tsresol = (v & 0x80) ? Math.pow(2, -(v & 0x7f)) : Math.pow(10, -v);
+    } else if (opt.code === 14 && opt.length >= 8) {
+      if (typeof view.getBigInt64 === 'function') {
+        result.tsoffset = Number(view.getBigInt64(opt.start, little));
+      } else {
+        const lo = view.getUint32(opt.start, little);
+        const hi = view.getInt32(opt.start + 4, little);
+        result.tsoffset = hi * TWO_32 + lo;
+      }
+    } else if (opt.code === 2) {
+      result.name = decodeText(view, opt.start, opt.length);
+    } else if (opt.code === 3) {
+      result.description = decodeText(view, opt.start, opt.length);
+    } else if (opt.code === 1) {
+      result.comment = decodeText(view, opt.start, opt.length);
+    }
+  }
+  return result;
+}
+
+function formatMac(bytes, off = 0) {
+  if (off + 6 > bytes.length) return '';
+  const parts = [];
+  for (let i = 0; i < 6; i++) parts.push(bytes[off + i].toString(16).padStart(2, '0'));
+  return parts.join(':');
+}
+
+function formatIPv4(bytes, off = 0) {
+  if (off + 4 > bytes.length) return '';
+  return bytes[off] + '.' + bytes[off + 1] + '.' + bytes[off + 2] + '.' + bytes[off + 3];
+}
+
+function formatIPv6(bytes, off = 0) {
+  if (off + 16 > bytes.length) return '';
+  const groups = [];
+  for (let i = 0; i < 8; i++) groups.push(((bytes[off + i * 2] << 8) | bytes[off + i * 2 + 1]).toString(16));
+  let bestStart = -1;
+  let bestLen = 0;
+  for (let i = 0; i < groups.length;) {
+    if (groups[i] !== '0') { i += 1; continue; }
+    let j = i;
+    while (j < groups.length && groups[j] === '0') j += 1;
+    if (j - i > bestLen) { bestStart = i; bestLen = j - i; }
+    i = j;
+  }
+  if (bestLen < 2) return groups.join(':');
+  const left = groups.slice(0, bestStart).join(':');
+  const right = groups.slice(bestStart + bestLen).join(':');
+  if (!left && !right) return '::';
+  if (!left) return '::' + right;
+  if (!right) return left + '::';
+  return left + '::' + right;
+}
+
+function u16be(bytes, off) {
+  if (off + 2 > bytes.length) return 0;
+  return (bytes[off] << 8) | bytes[off + 1];
+}
+
+function u32be(bytes, off) {
+  if (off + 4 > bytes.length) return 0;
+  return ((bytes[off] << 24) >>> 0) + (bytes[off + 1] << 16) + (bytes[off + 2] << 8) + bytes[off + 3];
+}
+
+function cleanDnsName(name) {
+  if (!name) return '';
+  let s = String(name).replace(/\0/g, '').trim();
+  if (s.endsWith('.')) s = s.slice(0, -1);
+  return s;
+}
+
+function dnsTypeName(type) {
+  switch (type) {
+    case 1: return 'A';
+    case 2: return 'NS';
+    case 5: return 'CNAME';
+    case 6: return 'SOA';
+    case 12: return 'PTR';
+    case 15: return 'MX';
+    case 16: return 'TXT';
+    case 28: return 'AAAA';
+    case 33: return 'SRV';
+    case 41: return 'OPT';
+    case 65: return 'HTTPS';
+    default: return 'TYPE' + type;
+  }
+}
+
+function readDnsName(bytes, off, msgStart, msgEnd, depth = 0) {
+  const labels = [];
+  let jumped = false;
+  let next = off;
+  let ok = true;
+  let guard = 0;
+  while (off < msgEnd && guard++ < 128) {
+    const len = bytes[off];
+    if (len === 0) {
+      off += 1;
+      if (!jumped) next = off;
+      return { name: cleanDnsName(labels.join('.')), next, ok };
+    }
+    const tag = len & 0xc0;
+    if (tag === 0xc0) {
+      if (off + 1 >= msgEnd) return { name: cleanDnsName(labels.join('.')), next: jumped ? next : msgEnd, ok: false };
+      const ptr = ((len & 0x3f) << 8) | bytes[off + 1];
+      if (!jumped) next = off + 2;
+      off = msgStart + ptr;
+      jumped = true;
+      if (off < msgStart || off >= msgEnd || depth > 20) return { name: cleanDnsName(labels.join('.')), next, ok: false };
+      depth += 1;
+      continue;
+    }
+    if (tag !== 0x00) {
+      ok = false;
+      if (!jumped) next = off + 1;
+      break;
+    }
+    off += 1;
+    if (off + len > msgEnd) {
+      ok = false;
+      if (!jumped) next = msgEnd;
+      break;
+    }
+    let label = safeDecode(bytes, off, len)
+      .replace(/[\x00-\x1f\x7f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!label) label = '_';
+    labels.push(label);
+    off += len;
+    if (!jumped) next = off;
+  }
+  return { name: cleanDnsName(labels.join('.')), next: jumped ? next : Math.min(off + 1, msgEnd), ok: false };
+}
+
+function readDnsRecord(bytes, off, msgStart, msgEnd) {
+  const nameRead = readDnsName(bytes, off, msgStart, msgEnd);
+  off = nameRead.next;
+  if (off + 10 > msgEnd) return { record: null, next: msgEnd };
+  const type = u16be(bytes, off);
+  const klass = u16be(bytes, off + 2);
+  const ttl = u32be(bytes, off + 4);
+  const rdlen = u16be(bytes, off + 8);
+  const rdataOff = off + 10;
+  const next = rdataOff + rdlen;
+  if (next > msgEnd) return { record: null, next: msgEnd };
+  let data = '';
+  let address = '';
+  if (type === 1 && rdlen === 4) {
+    address = formatIPv4(bytes, rdataOff);
+    data = address;
+  } else if (type === 28 && rdlen === 16) {
+    address = formatIPv6(bytes, rdataOff);
+    data = address;
+  } else if (type === 2 || type === 5 || type === 12) {
+    data = readDnsName(bytes, rdataOff, msgStart, msgEnd).name;
+  } else if (type === 15 && rdlen >= 3) {
+    const pref = u16be(bytes, rdataOff);
+    const ex = readDnsName(bytes, rdataOff + 2, msgStart, msgEnd).name;
+    data = pref + ' ' + ex;
+  } else if (type === 33 && rdlen >= 7) {
+    const priority = u16be(bytes, rdataOff);
+    const weight = u16be(bytes, rdataOff + 2);
+    const port = u16be(bytes, rdataOff + 4);
+    const target = readDnsName(bytes, rdataOff + 6, msgStart, msgEnd).name;
+    data = priority + ' ' + weight + ' ' + port + ' ' + target;
+  } else if (type === 16) {
+    const parts = [];
+    let p = rdataOff;
+    while (p < next) {
+      const l = bytes[p];
+      p += 1;
+      if (p + l > next) break;
+      parts.push(safeDecode(bytes, p, l));
+      p += l;
+    }
+    data = parts.join(' ');
+  } else if (type === 65 && rdlen >= 3) {
+    const priority = u16be(bytes, rdataOff);
+    const target = readDnsName(bytes, rdataOff + 2, msgStart, msgEnd).name;
+    data = priority + ' ' + target;
+  } else {
+    data = rdlen ? '[' + rdlen + ' bytes]' : '';
+  }
+  return {
+    record: {
+      name: cleanDnsName(nameRead.name),
+      type,
+      typeName: dnsTypeName(type),
+      class: klass,
+      ttl,
+      data: cleanDnsName(data),
+      address
+    },
+    next
+  };
+}
+
+function parseDnsMessage(bytes, off, length, flavor = 'DNS') {
+  const msgStart = off;
+  const msgEnd = Math.min(bytes.length, off + length);
+  if (msgEnd - msgStart < 12) return null;
+  const id = u16be(bytes, off);
+  const flags = u16be(bytes, off + 2);
+  const qd = u16be(bytes, off + 4);
+  const an = u16be(bytes, off + 6);
+  const ns = u16be(bytes, off + 8);
+  const ar = u16be(bytes, off + 10);
+  const totalRecords = qd + an + ns + ar;
+  if (totalRecords > MAX_DNS_RECORDS) return null;
+  off += 12;
+  const questions = [];
+  const answers = [];
+  const authorities = [];
+  const additionals = [];
+  const names = new Set();
+  const addresses = [];
+  const cnames = [];
+  const ptrs = [];
+
+  for (let i = 0; i < qd && off < msgEnd; i++) {
+    const nr = readDnsName(bytes, off, msgStart, msgEnd);
+    off = nr.next;
+    if (off + 4 > msgEnd) break;
+    const qtype = u16be(bytes, off);
+    const qclass = u16be(bytes, off + 2);
+    off += 4;
+    const qname = cleanDnsName(nr.name);
+    if (qname) names.add(qname);
+    questions.push({ name: qname, type: qtype, typeName: dnsTypeName(qtype), class: qclass });
+  }
+
+  function readRecords(count, dest) {
+    for (let i = 0; i < count && off < msgEnd; i++) {
+      const rr = readDnsRecord(bytes, off, msgStart, msgEnd);
+      off = rr.next;
+      if (!rr.record) break;
+      const rec = rr.record;
+      dest.push(rec);
+      if (rec.name) names.add(rec.name);
+      if (rec.data && /[a-zA-Z]/.test(rec.data) && !rec.data.startsWith('[')) names.add(rec.data);
+      if ((rec.type === 1 || rec.type === 28) && rec.address && rec.name) {
+        addresses.push({ name: rec.name, address: rec.address, type: rec.typeName, ttl: rec.ttl });
+      } else if (rec.type === 5 && rec.name && rec.data) {
+        cnames.push({ alias: rec.name, canonical: rec.data, ttl: rec.ttl });
+      } else if (rec.type === 12 && rec.name && rec.data) {
+        ptrs.push({ ptr: rec.name, name: rec.data, ttl: rec.ttl });
+      }
+    }
+  }
+
+  readRecords(an, answers);
+  readRecords(ns, authorities);
+  readRecords(ar, additionals);
+
+  let label = flavor;
+  const isResponse = Boolean(flags & 0x8000);
+  if (questions.length) label += ' Q ' + questions.slice(0, 3).map(q => q.name || q.typeName).join(', ');
+  const answerNames = answers.concat(additionals).filter(r => r.type === 1 || r.type === 28 || r.type === 12 || r.type === 5).slice(0, 3)
+    .map(r => r.name && r.data ? r.name + ' -> ' + r.data : (r.name || r.data || r.typeName));
+  if (answerNames.length) label = flavor + ' ' + answerNames.join(', ');
+
+  return {
+    id,
+    flags,
+    qr: isResponse ? 'response' : 'query',
+    opcode: (flags >> 11) & 0x0f,
+    rcode: flags & 0x0f,
+    questionCount: qd,
+    answerCount: an,
+    authorityCount: ns,
+    additionalCount: ar,
+    questions,
+    answers,
+    authorities,
+    additionals,
+    names: Array.from(names).slice(0, 200),
+    addresses,
+    cnames,
+    ptrs,
+    label
+  };
+}
+
+function serviceForPort(protocol, sport, dport) {
+  const ports = [dport, sport].filter(p => Number.isFinite(p));
+  if (protocol === 'UDP' && (sport === 443 || dport === 443)) return 'QUIC';
+  for (const port of ports) {
+    switch (port) {
+      case 20: return 'FTP-DATA';
+      case 21: return 'FTP';
+      case 22: return 'SSH';
+      case 23: return 'TELNET';
+      case 25: return 'SMTP';
+      case 53: return 'DNS';
+      case 67: case 68: return 'DHCP';
+      case 80: return 'HTTP';
+      case 110: return 'POP3';
+      case 123: return 'NTP';
+      case 137: case 138: case 139: return 'NETBIOS';
+      case 143: return 'IMAP';
+      case 161: case 162: return 'SNMP';
+      case 389: return 'LDAP';
+      case 443: return 'HTTPS';
+      case 445: return 'SMB';
+      case 465: return 'SMTPS';
+      case 500: return 'IKE';
+      case 587: return 'SUBMISSION';
+      case 993: return 'IMAPS';
+      case 995: return 'POP3S';
+      case 1900: return 'SSDP';
+      case 3389: return 'RDP';
+      case 5353: return 'MDNS';
+      case 5355: return 'LLMNR';
+      default: break;
+    }
+  }
+  return ports.length ? protocol + '/' + ports[0] : protocol;
+}
+
+function protocolNameIPv4(n) {
+  switch (n) {
+    case 1: return 'ICMP';
+    case 2: return 'IGMP';
+    case 6: return 'TCP';
+    case 17: return 'UDP';
+    case 41: return 'IPv6';
+    case 47: return 'GRE';
+    case 50: return 'ESP';
+    case 51: return 'AH';
+    case 89: return 'OSPF';
+    case 132: return 'SCTP';
+    default: return 'IPv4-' + n;
+  }
+}
+
+function protocolNameIPv6(n) {
+  switch (n) {
+    case 6: return 'TCP';
+    case 17: return 'UDP';
+    case 47: return 'GRE';
+    case 50: return 'ESP';
+    case 51: return 'AH';
+    case 58: return 'ICMPv6';
+    case 89: return 'OSPF';
+    case 132: return 'SCTP';
+    default: return 'IPv6-' + n;
+  }
+}
+
+function basePacket(src, dst, protocol, length, extra = {}) {
+  const sport = Number.isFinite(extra.sport) ? extra.sport : null;
+  const dport = Number.isFinite(extra.dport) ? extra.dport : null;
+  const service = extra.service || serviceForPort(protocol, sport, dport);
+  return {
+    src,
+    dst,
+    protocol,
+    service,
+    sport,
+    dport,
+    bytes: Number(extra.origLen || length || 0),
+    caplen: Number(extra.caplen || length || 0),
+    srcMac: extra.srcMac || '',
+    dstMac: extra.dstMac || '',
+    ethType: extra.ethType || '',
+    detail: extra.detail || '',
+    vlan: extra.vlan || null,
+    dns: extra.dns || null,
+    tcpFlags: extra.tcpFlags || ''
+  };
+}
+
+function tcpFlagsString(byte) {
+  const flags = [];
+  if (byte & 0x01) flags.push('FIN');
+  if (byte & 0x02) flags.push('SYN');
+  if (byte & 0x04) flags.push('RST');
+  if (byte & 0x08) flags.push('PSH');
+  if (byte & 0x10) flags.push('ACK');
+  if (byte & 0x20) flags.push('URG');
+  if (byte & 0x40) flags.push('ECE');
+  if (byte & 0x80) flags.push('CWR');
+  return flags.join(',');
+}
+
+function parseIPv4(bytes, off, length, linkMeta = {}) {
+  if (off + 20 > length) return null;
+  const vihl = bytes[off];
+  const version = vihl >> 4;
+  const ihl = (vihl & 0x0f) * 4;
+  if (version !== 4 || ihl < 20 || off + ihl > length) return null;
+  const totalLenField = u16be(bytes, off + 2);
+  const totalLen = Math.max(ihl, Math.min(length - off, totalLenField || (length - off)));
+  const end = off + totalLen;
+  const protocolNumber = bytes[off + 9];
+  const protocol = protocolNameIPv4(protocolNumber);
+  const src = formatIPv4(bytes, off + 12);
+  const dst = formatIPv4(bytes, off + 16);
+  const frag = u16be(bytes, off + 6);
+  const moreFragments = Boolean(frag & 0x2000);
+  const fragmentOffset = frag & 0x1fff;
+  const poff = off + ihl;
+  let sport = null, dport = null, detail = '', dns = null, service = '', tcpFlags = '';
+
+  if ((protocolNumber === 6 || protocolNumber === 17 || protocolNumber === 132) && fragmentOffset === 0 && poff + 4 <= end) {
+    sport = u16be(bytes, poff);
+    dport = u16be(bytes, poff + 2);
+    detail = sport + ' -> ' + dport;
+    if (protocolNumber === 6 && poff + 20 <= end) {
+      const tcpHeaderLen = ((bytes[poff + 12] >> 4) & 0x0f) * 4;
+      tcpFlags = tcpFlagsString(bytes[poff + 13]);
+      detail += tcpFlags ? ' ' + tcpFlags : '';
+      const payloadOff = poff + tcpHeaderLen;
+      const payloadLen = Math.max(0, end - payloadOff);
+      if ((sport === 53 || dport === 53) && payloadLen > 2) {
+        const dnsLen = Math.min(payloadLen - 2, u16be(bytes, payloadOff));
+        dns = parseDnsMessage(bytes, payloadOff + 2, dnsLen, 'DNS');
+      }
+    } else if (protocolNumber === 17 && poff + 8 <= end) {
+      const udpLen = u16be(bytes, poff + 4);
+      const payloadOff = poff + 8;
+      const payloadLen = Math.max(0, Math.min(end, poff + (udpLen || (end - poff))) - payloadOff);
+      if (DNS_PORTS.has(sport) || DNS_PORTS.has(dport)) {
+        const flavor = (sport === 5353 || dport === 5353) ? 'MDNS' : ((sport === 5355 || dport === 5355) ? 'LLMNR' : 'DNS');
+        dns = parseDnsMessage(bytes, payloadOff, payloadLen, flavor);
+      }
+    }
+    service = dns ? ((sport === 5353 || dport === 5353) ? 'MDNS' : ((sport === 5355 || dport === 5355) ? 'LLMNR' : 'DNS')) : serviceForPort(protocol, sport, dport);
+    if (dns && dns.label) detail = dns.label;
+  } else if (protocolNumber === 1 && poff + 2 <= end) {
+    detail = 'type ' + bytes[poff] + ' code ' + bytes[poff + 1];
+  } else if (moreFragments || fragmentOffset !== 0) {
+    detail = 'fragment offset ' + (fragmentOffset * 8);
+  }
+
+  return basePacket(src, dst, protocol, linkMeta.origLen || totalLen, {
+    ...linkMeta, sport, dport, detail, dns, service, tcpFlags
+  });
+}
+
+function skipIPv6Extensions(bytes, nextHeader, off, length) {
+  let nh = nextHeader;
+  let poff = off;
+  let hops = 0;
+  while (hops < 12) {
+    if (nh === 0 || nh === 43 || nh === 60 || nh === 135) {
+      if (poff + 2 > length) break;
+      const next = bytes[poff];
+      const hdrLen = (bytes[poff + 1] + 1) * 8;
+      if (poff + hdrLen > length) break;
+      poff += hdrLen;
+      nh = next;
+    } else if (nh === 44) {
+      if (poff + 8 > length) break;
+      const next = bytes[poff];
+      poff += 8;
+      nh = next;
+    } else if (nh === 51) {
+      if (poff + 2 > length) break;
+      const next = bytes[poff];
+      const hdrLen = (bytes[poff + 1] + 2) * 4;
+      if (poff + hdrLen > length) break;
+      poff += hdrLen;
+      nh = next;
+    } else break;
+    hops += 1;
+  }
+  return { nextHeader: nh, offset: poff };
+}
+
+function parseIPv6(bytes, off, length, linkMeta = {}) {
+  if (off + 40 > length) return null;
+  if ((bytes[off] >> 4) !== 6) return null;
+  const src = formatIPv6(bytes, off + 8);
+  const dst = formatIPv6(bytes, off + 24);
+  const payloadLength = u16be(bytes, off + 4);
+  const frameEnd = payloadLength ? Math.min(length, off + 40 + payloadLength) : length;
+  const skipped = skipIPv6Extensions(bytes, bytes[off + 6], off + 40, frameEnd);
+  const protocolNumber = skipped.nextHeader;
+  const protocol = protocolNameIPv6(protocolNumber);
+  const poff = skipped.offset;
+  let sport = null, dport = null, detail = '', dns = null, service = '', tcpFlags = '';
+
+  if ((protocolNumber === 6 || protocolNumber === 17 || protocolNumber === 132) && poff + 4 <= frameEnd) {
+    sport = u16be(bytes, poff);
+    dport = u16be(bytes, poff + 2);
+    detail = sport + ' -> ' + dport;
+    if (protocolNumber === 6 && poff + 20 <= frameEnd) {
+      const tcpHeaderLen = ((bytes[poff + 12] >> 4) & 0x0f) * 4;
+      tcpFlags = tcpFlagsString(bytes[poff + 13]);
+      detail += tcpFlags ? ' ' + tcpFlags : '';
+      const payloadOff = poff + tcpHeaderLen;
+      const payloadLen = Math.max(0, frameEnd - payloadOff);
+      if ((sport === 53 || dport === 53) && payloadLen > 2) {
+        const dnsLen = Math.min(payloadLen - 2, u16be(bytes, payloadOff));
+        dns = parseDnsMessage(bytes, payloadOff + 2, dnsLen, 'DNS');
+      }
+    } else if (protocolNumber === 17 && poff + 8 <= frameEnd) {
+      const udpLen = u16be(bytes, poff + 4);
+      const payloadOff = poff + 8;
+      const payloadLen = Math.max(0, Math.min(frameEnd, poff + (udpLen || (frameEnd - poff))) - payloadOff);
+      if (DNS_PORTS.has(sport) || DNS_PORTS.has(dport)) {
+        const flavor = (sport === 5353 || dport === 5353) ? 'MDNS' : ((sport === 5355 || dport === 5355) ? 'LLMNR' : 'DNS');
+        dns = parseDnsMessage(bytes, payloadOff, payloadLen, flavor);
+      }
+    }
+    service = dns ? ((sport === 5353 || dport === 5353) ? 'MDNS' : ((sport === 5355 || dport === 5355) ? 'LLMNR' : 'DNS')) : serviceForPort(protocol, sport, dport);
+    if (dns && dns.label) detail = dns.label;
+  } else if (protocolNumber === 58 && poff + 2 <= frameEnd) {
+    detail = 'type ' + bytes[poff] + ' code ' + bytes[poff + 1];
+  }
+
+  return basePacket(src, dst, protocol, linkMeta.origLen || (frameEnd - off), {
+    ...linkMeta, sport, dport, detail, dns, service, tcpFlags
+  });
+}
+
+function parseARP(bytes, off, length, linkMeta = {}) {
+  if (off + 28 > length) return null;
+  const htype = u16be(bytes, off);
+  const ptype = u16be(bytes, off + 2);
+  const hlen = bytes[off + 4];
+  const plen = bytes[off + 5];
+  const oper = u16be(bytes, off + 6);
+  if (htype !== 1 || ptype !== 0x0800 || hlen !== 6 || plen !== 4) {
+    return basePacket(linkMeta.srcMac || 'ARP', linkMeta.dstMac || 'ARP', 'ARP', linkMeta.origLen || length, { ...linkMeta, detail: 'operation ' + oper });
+  }
+  const sha = formatMac(bytes, off + 8);
+  const spa = formatIPv4(bytes, off + 14);
+  const tha = formatMac(bytes, off + 18);
+  const tpa = formatIPv4(bytes, off + 24);
+  const detail = (oper === 1 ? 'who-has ' : (oper === 2 ? 'is-at ' : 'op ' + oper + ' ')) + tpa;
+  return basePacket(spa || sha, tpa || tha, 'ARP', linkMeta.origLen || length, { ...linkMeta, srcMac: sha || linkMeta.srcMac, dstMac: tha || linkMeta.dstMac, detail });
+}
+
+function parsePacketByEthType(bytes, ethType, payloadOff, length, linkMeta) {
+  if (ethType === 0x0800) return parseIPv4(bytes, payloadOff, length, { ...linkMeta, ethType: '0x0800' });
+  if (ethType === 0x86dd) return parseIPv6(bytes, payloadOff, length, { ...linkMeta, ethType: '0x86dd' });
+  if (ethType === 0x0806) return parseARP(bytes, payloadOff, length, { ...linkMeta, ethType: '0x0806' });
+  return basePacket(linkMeta.srcMac || 'link-src', linkMeta.dstMac || 'link-dst', 'EtherType 0x' + ethType.toString(16).padStart(4, '0'), linkMeta.origLen || length, { ...linkMeta, ethType: '0x' + ethType.toString(16).padStart(4, '0'), detail: 'unsupported EtherType' });
+}
+
+function parseEthernet(bytes, capLen, origLen) {
+  if (bytes.length < 14) return null;
+  const dstMac = formatMac(bytes, 0);
+  const srcMac = formatMac(bytes, 6);
+  let ethType = u16be(bytes, 12);
+  let off = 14;
+  const vlans = [];
+  while ((ethType === 0x8100 || ethType === 0x88a8 || ethType === 0x9100) && off + 4 <= bytes.length) {
+    vlans.push(u16be(bytes, off));
+    ethType = u16be(bytes, off + 2);
+    off += 4;
+  }
+  return parsePacketByEthType(bytes, ethType, off, bytes.length, { srcMac, dstMac, vlan: vlans.length ? vlans : null, caplen: capLen, origLen });
+}
+
+function parseLinuxSll(bytes, capLen, origLen) {
+  if (bytes.length < 16) return null;
+  const addrLen = u16be(bytes, 4);
+  const addr = addrLen >= 6 ? formatMac(bytes, 6) : '';
+  const ethType = u16be(bytes, 14);
+  return parsePacketByEthType(bytes, ethType, 16, bytes.length, { srcMac: addr, dstMac: '', caplen: capLen, origLen });
+}
+
+function parseLinuxSll2(bytes, capLen, origLen) {
+  if (bytes.length < 20) return null;
+  const ethType = u16be(bytes, 0);
+  const addrLen = bytes[11];
+  const addr = addrLen >= 6 ? formatMac(bytes, 12) : '';
+  return parsePacketByEthType(bytes, ethType, 20, bytes.length, { srcMac: addr, dstMac: '', caplen: capLen, origLen });
+}
+
+function parsePacketBytes(bytes, linkType, capLen, origLen) {
+  switch (linkType) {
+    case LINKTYPE_ETHERNET: return parseEthernet(bytes, capLen, origLen);
+    case LINKTYPE_RAW: {
+      const v = bytes[0] >> 4;
+      if (v === 4) return parseIPv4(bytes, 0, bytes.length, { caplen: capLen, origLen });
+      if (v === 6) return parseIPv6(bytes, 0, bytes.length, { caplen: capLen, origLen });
+      return null;
+    }
+    case LINKTYPE_LINUX_SLL: return parseLinuxSll(bytes, capLen, origLen);
+    case LINKTYPE_IPV4: return parseIPv4(bytes, 0, bytes.length, { caplen: capLen, origLen });
+    case LINKTYPE_IPV6: return parseIPv6(bytes, 0, bytes.length, { caplen: capLen, origLen });
+    case LINKTYPE_LINUX_SLL2: return parseLinuxSll2(bytes, capLen, origLen);
+    default: return null;
+  }
+}
+
+function classifyHost(host) {
+  if (!host) return 'remote';
+  if (host === '255.255.255.255' || host.toLowerCase() === 'ff:ff:ff:ff:ff:ff') return 'broadcast';
+  if (/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(host)) {
+    const first = parseInt(host.slice(0, 2), 16);
+    if ((first & 1) === 1) return 'multicast';
+    return 'mac';
+  }
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+    const p = host.split('.').map(Number);
+    if (p[0] >= 224 && p[0] <= 239) return 'multicast';
+    if (p[0] === 10 || p[0] === 127 || (p[0] === 192 && p[1] === 168) || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 169 && p[1] === 254)) return 'local';
+    return 'remote';
+  }
+  const h = host.toLowerCase();
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')) return 'local';
+  if (h.startsWith('ff')) return 'multicast';
+  return 'remote';
+}
+
+function parseNullSeparatedNames(bytes, off, len) {
+  const names = [];
+  const end = off + len;
+  let start = off;
+  for (let i = off; i <= end; i++) {
+    if (i === end || bytes[i] === 0) {
+      const s = cleanDnsName(safeDecode(bytes, start, i - start));
+      if (s) names.push(s);
+      start = i + 1;
+    }
+  }
+  return names;
+}
+
+function parseNameResolutionBlock(view, bodyStart, bodyEnd, little, allBytes) {
+  const records = [];
+  let off = bodyStart;
+  while (off + 4 <= bodyEnd) {
+    const type = view.getUint16(off, little);
+    const len = view.getUint16(off + 2, little);
+    off += 4;
+    if (type === 0) break;
+    if (off + len > bodyEnd) break;
+    if (type === 1 && len >= 5) {
+      const ip = formatIPv4(allBytes, off);
+      const names = parseNullSeparatedNames(allBytes, off + 4, len - 4);
+      for (const name of names) records.push({ address: ip, name, type: 'NRB', source: 'pcapng-nrb' });
+    } else if (type === 2 && len >= 17) {
+      const ip = formatIPv6(allBytes, off);
+      const names = parseNullSeparatedNames(allBytes, off + 16, len - 16);
+      for (const name of names) records.push({ address: ip, name, type: 'NRB', source: 'pcapng-nrb' });
+    }
+    off += align4(len);
+  }
+  return records;
+}
+
+function reversePtrNameToIP(name) {
+  const n = cleanDnsName(name).toLowerCase();
+  if (n.endsWith('.in-addr.arpa')) {
+    const labels = n.slice(0, -13).split('.').filter(Boolean);
+    if (labels.length === 4 && labels.every(x => /^\d+$/.test(x) && Number(x) >= 0 && Number(x) <= 255)) {
+      return labels.reverse().join('.');
+    }
+  }
+  if (n.endsWith('.ip6.arpa')) {
+    const labels = n.slice(0, -9).split('.').filter(Boolean);
+    if (labels.length === 32 && labels.every(x => /^[0-9a-f]$/.test(x))) {
+      const hex = labels.reverse().join('');
+      const bytes = new Uint8Array(16);
+      for (let i = 0; i < 16; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+      return formatIPv6(bytes, 0);
+    }
+  }
+  return '';
+}
+
+function normalizeNameForResolver(name) {
+  const cleaned = cleanDnsName(name);
+  if (!cleaned) return '';
+  const lower = cleaned.toLowerCase();
+  if (lower === 'localhost') return cleaned;
+  if (lower.endsWith('.in-addr.arpa') || lower.endsWith('.ip6.arpa')) return '';
+  if (lower === '.') return '';
+  return cleaned;
+}
+
+function addResolution(resolver, address, name, type, ts, source) {
+  address = String(address || '').trim();
+  name = normalizeNameForResolver(name);
+  if (!address || !name) return;
+  if (!resolver.ipNames[address]) resolver.ipNames[address] = { address, names: {}, firstSeen: ts, lastSeen: ts };
+  if (!resolver.ipNames[address].names[name]) resolver.ipNames[address].names[name] = { name, count: 0, firstSeen: ts, lastSeen: ts, types: {}, sources: {} };
+  const n = resolver.ipNames[address].names[name];
+  n.count += 1;
+  n.firstSeen = Math.min(n.firstSeen, ts);
+  n.lastSeen = Math.max(n.lastSeen, ts);
+  bump(n.types, type || 'DNS');
+  bump(n.sources, source || 'dns');
+
+  const lname = name.toLowerCase();
+  if (!resolver.nameIps[lname]) resolver.nameIps[lname] = { name, ips: {}, firstSeen: ts, lastSeen: ts };
+  if (!resolver.nameIps[lname].ips[address]) resolver.nameIps[lname].ips[address] = { address, count: 0, firstSeen: ts, lastSeen: ts, types: {}, sources: {} };
+  const ip = resolver.nameIps[lname].ips[address];
+  ip.count += 1;
+  ip.firstSeen = Math.min(ip.firstSeen, ts);
+  ip.lastSeen = Math.max(ip.lastSeen, ts);
+  bump(ip.types, type || 'DNS');
+  bump(ip.sources, source || 'dns');
+}
+
+function chooseBestName(entry) {
+  if (!entry || !entry.names) return '';
+  const candidates = Object.values(entry.names).filter(n => normalizeNameForResolver(n.name));
+  if (!candidates.length) return '';
+  candidates.sort((a, b) => {
+    const alocal = a.name.toLowerCase().endsWith('.local') ? 1 : 0;
+    const blocal = b.name.toLowerCase().endsWith('.local') ? 1 : 0;
+    return b.count - a.count || b.lastSeen - a.lastSeen || blocal - alocal || a.name.length - b.name.length || a.name.localeCompare(b.name);
+  });
+  return candidates[0].name;
+}
+
+function buildDnsResolver(packets, nrbRecords) {
+  const resolver = { ipNames: {}, nameIps: {}, hostLabels: {}, resolutions: [], dnsPacketCount: 0, queryCounts: {}, responseCounts: {} };
+  for (const rec of nrbRecords || []) addResolution(resolver, rec.address, rec.name, rec.type || 'NRB', 0, rec.source || 'pcapng-nrb');
+
+  for (const p of packets) {
+    if (!p.dns) continue;
+    resolver.dnsPacketCount += 1;
+    const ts = Number.isFinite(p.ts) ? p.ts : 0;
+    for (const q of p.dns.questions || []) {
+      if (q.name) bump(resolver.queryCounts, q.name);
+    }
+    const records = (p.dns.answers || []).concat(p.dns.authorities || [], p.dns.additionals || []);
+    const addressRecords = [];
+    const cnameRecords = [];
+    for (const rec of records) {
+      if ((rec.type === 1 || rec.type === 28) && rec.address && rec.name) {
+        addResolution(resolver, rec.address, rec.name, rec.typeName, ts, p.service || 'dns');
+        addressRecords.push(rec);
+        bump(resolver.responseCounts, rec.name);
+      } else if (rec.type === 5 && rec.name && rec.data) {
+        cnameRecords.push(rec);
+      } else if (rec.type === 12 && rec.name && rec.data) {
+        const ip = reversePtrNameToIP(rec.name);
+        if (ip) addResolution(resolver, ip, rec.data, 'PTR', ts, p.service || 'dns');
+      }
+    }
+    for (const c of cnameRecords) {
+      for (const a of addressRecords) {
+        if (cleanDnsName(a.name).toLowerCase() === cleanDnsName(c.data).toLowerCase()) {
+          addResolution(resolver, a.address, c.name, 'CNAME+' + a.typeName, ts, p.service || 'dns');
+        }
+      }
+    }
+  }
+
+  for (const [ip, entry] of Object.entries(resolver.ipNames)) {
+    const best = chooseBestName(entry);
+    if (best) resolver.hostLabels[ip] = best;
+    const names = Object.values(entry.names).sort((a, b) => b.count - a.count || b.lastSeen - a.lastSeen || a.name.localeCompare(b.name));
+    for (const n of names) {
+      resolver.resolutions.push({ address: ip, name: n.name, count: n.count, firstSeen: n.firstSeen, lastSeen: n.lastSeen, types: sortedEntriesFromMapObj(n.types), sources: sortedEntriesFromMapObj(n.sources) });
+    }
+  }
+  resolver.resolutions.sort((a, b) => b.count - a.count || b.lastSeen - a.lastSeen || a.address.localeCompare(b.address));
+  resolver.queryCounts = sortedEntriesFromMapObj(resolver.queryCounts).slice(0, 5000);
+  resolver.responseCounts = sortedEntriesFromMapObj(resolver.responseCounts).slice(0, 5000);
+  return resolver;
+}
+
+function packetSearchString(p, resolver) {
+  const parts = [p.src, p.dst, p.srcLabel, p.dstLabel, p.protocol, p.service, p.detail, p.sport, p.dport, p.srcMac, p.dstMac, p.ethType];
+  const srcEntry = resolver.ipNames[p.src];
+  const dstEntry = resolver.ipNames[p.dst];
+  if (srcEntry) parts.push(...Object.keys(srcEntry.names));
+  if (dstEntry) parts.push(...Object.keys(dstEntry.names));
+  if (p.dns) {
+    parts.push(p.dns.label, p.dns.qr);
+    for (const q of p.dns.questions || []) parts.push(q.name, q.typeName);
+    for (const rec of (p.dns.answers || []).concat(p.dns.authorities || [], p.dns.additionals || [])) parts.push(rec.name, rec.typeName, rec.data, rec.address);
+  }
+  return parts.filter(v => v !== null && v !== undefined && v !== '').join(' ').toLowerCase();
+}
+
+function enrichPacketsAndSummarize(packets, interfaces, meta) {
+  packets.sort((a, b) => a.ts - b.ts || a.index - b.index);
+  const firstTs = packets.length ? packets[0].ts : null;
+  const lastTs = packets.length ? packets[packets.length - 1].ts : null;
+  for (let i = 0; i < packets.length; i++) {
+    packets[i].index = i;
+    packets[i].rel = firstTs == null ? 0 : packets[i].ts - firstTs;
+  }
+
+  const resolver = buildDnsResolver(packets, meta.nrbRecords || []);
+  for (const p of packets) {
+    p.srcLabel = resolver.hostLabels[p.src] || p.src;
+    p.dstLabel = resolver.hostLabels[p.dst] || p.dst;
+    const srcEntry = resolver.ipNames[p.src];
+    const dstEntry = resolver.ipNames[p.dst];
+    p.srcNames = srcEntry ? Object.keys(srcEntry.names).slice(0, 8) : [];
+    p.dstNames = dstEntry ? Object.keys(dstEntry.names).slice(0, 8) : [];
+    p.search = packetSearchString(p, resolver);
+  }
+
+  const hostStats = {};
+  const protocolCounts = {};
+  const serviceCounts = {};
+  const pairCounts = {};
+  let bytesDecoded = 0;
+  for (const p of packets) {
+    bytesDecoded += p.bytes || 0;
+    bump(protocolCounts, p.protocol);
+    bump(serviceCounts, p.service || p.protocol);
+    bump(pairCounts, p.src + '\u0000' + p.dst);
+    if (!hostStats[p.src]) hostStats[p.src] = { host: p.src, label: p.srcLabel, names: p.srcNames || [], className: classifyHost(p.src), sentPackets: 0, recvPackets: 0, sentBytes: 0, recvBytes: 0, totalPackets: 0, totalBytes: 0 };
+    if (!hostStats[p.dst]) hostStats[p.dst] = { host: p.dst, label: p.dstLabel, names: p.dstNames || [], className: classifyHost(p.dst), sentPackets: 0, recvPackets: 0, sentBytes: 0, recvBytes: 0, totalPackets: 0, totalBytes: 0 };
+    hostStats[p.src].label = p.srcLabel;
+    hostStats[p.dst].label = p.dstLabel;
+    hostStats[p.src].sentPackets += 1;
+    hostStats[p.src].sentBytes += p.bytes || 0;
+    hostStats[p.src].totalPackets += 1;
+    hostStats[p.src].totalBytes += p.bytes || 0;
+    hostStats[p.dst].recvPackets += 1;
+    hostStats[p.dst].recvBytes += p.bytes || 0;
+    hostStats[p.dst].totalPackets += 1;
+    hostStats[p.dst].totalBytes += p.bytes || 0;
+  }
+
+  const topPairs = Object.entries(pairCounts).map(([key, count]) => {
+    const parts = key.split('\u0000');
+    return { src: parts[0], dst: parts[1], srcLabel: resolver.hostLabels[parts[0]] || parts[0], dstLabel: resolver.hostLabels[parts[1]] || parts[1], count };
+  }).sort((a, b) => b.count - a.count).slice(0, 100);
+
+  return {
+    packets,
+    interfaces,
+    dns: resolver,
+    summary: {
+      parser: 'pcapng-traffic-movie-v2-core',
+      fileType: meta.fileType || 'pcapng',
+      fileBytes: meta.fileBytes,
+      packetsDecoded: packets.length,
+      bytesDecoded,
+      duration: firstTs == null || lastTs == null ? 0 : lastTs - firstTs,
+      firstTs,
+      lastTs,
+      hostCount: Object.keys(hostStats).length,
+      protocolCounts: sortedEntriesFromMapObj(protocolCounts),
+      serviceCounts: sortedEntriesFromMapObj(serviceCounts),
+      hostStats: Object.values(hostStats).sort((a, b) => b.totalPackets - a.totalPackets || a.host.localeCompare(b.host)),
+      topPairs,
+      blockCounts: meta.blockCounts || {},
+      linkTypes: meta.linkTypes || {},
+      skippedByReason: meta.skippedByReason || {},
+      malformedBlocks: meta.malformedBlocks || 0,
+      warnings: meta.warnings || [],
+      dnsPacketCount: resolver.dnsPacketCount,
+      dnsResolutionCount: resolver.resolutions.length,
+      nrbRecordCount: (meta.nrbRecords || []).length
+    }
+  };
+}
+
+function parsePcapng(arrayBuffer, options = {}) {
+  const view = new DataView(arrayBuffer);
+  const allBytes = new Uint8Array(arrayBuffer);
+  const packets = [];
+  const interfaces = [];
+  const warnings = [];
+  const blockCounts = {};
+  const linkTypes = {};
+  const skippedByReason = {};
+  const nrbRecords = [];
+  const maxPackets = Number.isFinite(options.maxPackets) ? options.maxPackets : Infinity;
+  const progressEveryBytes = options.progressEveryBytes || Math.max(1024 * 1024, Math.floor(arrayBuffer.byteLength / 50));
+  let nextProgressAt = progressEveryBytes;
+  let offset = 0;
+  let section = null;
+  let sectionIndex = -1;
+  let malformedBlocks = 0;
+
+  function reportProgress(force = false) {
+    if (typeof options.onProgress === 'function' && (force || offset >= nextProgressAt)) {
+      options.onProgress({ offset, size: arrayBuffer.byteLength, packets: packets.length, phase: 'pcapng' });
+      while (nextProgressAt <= offset) nextProgressAt += progressEveryBytes;
+    }
+  }
+
+  while (offset + 12 <= arrayBuffer.byteLength) {
+    reportProgress(false);
+    const typeLE = view.getUint32(offset, true);
+    const typeBE = view.getUint32(offset, false);
+    if (typeLE === BLOCK_SHB || typeBE === BLOCK_SHB) {
+      let little;
+      if (view.getUint32(offset + 8, true) === BYTE_ORDER_MAGIC) little = true;
+      else if (view.getUint32(offset + 8, false) === BYTE_ORDER_MAGIC) little = false;
+      else { warnings.push('Section Header Block at ' + offset + ' has an unknown byte-order magic.'); break; }
+      const blockLen = view.getUint32(offset + 4, little);
+      if (blockLen < 28 || offset + blockLen > arrayBuffer.byteLength) { warnings.push('Section Header Block at ' + offset + ' has invalid length ' + blockLen + '.'); malformedBlocks += 1; break; }
+      sectionIndex += 1;
+      section = { little, interfaces: [], sectionIndex };
+      bump(blockCounts, 'SHB');
+      offset += blockLen;
+      continue;
+    }
+    if (!section) { warnings.push('Found block before first Section Header Block at offset ' + offset + '.'); break; }
+    const little = section.little;
+    const blockType = view.getUint32(offset, little);
+    const blockLen = view.getUint32(offset + 4, little);
+    if (blockLen < 12 || offset + blockLen > arrayBuffer.byteLength) { warnings.push('Block ' + blockName(blockType) + ' at ' + offset + ' has invalid length ' + blockLen + '.'); malformedBlocks += 1; break; }
+    const bodyStart = offset + 8;
+    const bodyEnd = offset + blockLen - 4;
+    bump(blockCounts, blockName(blockType));
+
+    if (blockType === BLOCK_IDB) {
+      if (bodyStart + 8 <= bodyEnd) {
+        const linkType = view.getUint16(bodyStart, little);
+        const snapLen = view.getUint32(bodyStart + 4, little);
+        const ifaceOptions = parseInterfaceOptions(view, bodyStart + 8, bodyEnd, little);
+        const iface = { id: section.interfaces.length, globalId: interfaces.length, sectionIndex, linkType, snapLen, tsresol: ifaceOptions.tsresol, tsoffset: ifaceOptions.tsoffset, name: ifaceOptions.name, description: ifaceOptions.description, comment: ifaceOptions.comment };
+        section.interfaces.push(iface);
+        interfaces.push(iface);
+        bump(linkTypes, String(linkType));
+      }
+    } else if (blockType === BLOCK_NRB) {
+      const recs = parseNameResolutionBlock(view, bodyStart, bodyEnd, little, allBytes);
+      for (const rec of recs) nrbRecords.push(rec);
+    } else if (blockType === BLOCK_EPB) {
+      if (bodyStart + 20 <= bodyEnd) {
+        const interfaceId = view.getUint32(bodyStart, little);
+        const tsHigh = view.getUint32(bodyStart + 4, little);
+        const tsLow = view.getUint32(bodyStart + 8, little);
+        const capLen = view.getUint32(bodyStart + 12, little);
+        const origLen = view.getUint32(bodyStart + 16, little);
+        const packetStart = bodyStart + 20;
+        const packetEnd = packetStart + capLen;
+        const iface = section.interfaces[interfaceId];
+        if (!iface) bump(skippedByReason, 'missing_interface');
+        else if (capLen > origLen && origLen !== 0) bump(skippedByReason, 'caplen_gt_origlen');
+        else if (packetEnd > bodyEnd) bump(skippedByReason, 'truncated_epb');
+        else if (packets.length < maxPackets) {
+          const packetBytes = allBytes.subarray(packetStart, packetEnd);
+          const decoded = parsePacketBytes(packetBytes, iface.linkType, capLen, origLen || capLen);
+          const ts = (tsHigh * TWO_32 + tsLow) * iface.tsresol + iface.tsoffset;
+          if (decoded && decoded.src && decoded.dst) {
+            decoded.ts = ts;
+            decoded.iface = iface.globalId;
+            decoded.linkType = iface.linkType;
+            decoded.index = packets.length;
+            packets.push(decoded);
+          } else bump(skippedByReason, 'unsupported_or_malformed_linktype_' + iface.linkType);
+        }
+      }
+    } else if (blockType === BLOCK_SPB) {
+      bump(skippedByReason, 'simple_packet_no_timestamp');
+    }
+    offset += blockLen;
+  }
+  reportProgress(true);
+  return enrichPacketsAndSummarize(packets, interfaces, { fileType: 'pcapng', fileBytes: arrayBuffer.byteLength, blockCounts, linkTypes, skippedByReason, malformedBlocks, warnings, nrbRecords });
+}
+
+function detectPcap(arrayBuffer) {
+  if (arrayBuffer.byteLength < 24) return null;
+  const view = new DataView(arrayBuffer);
+  const be = view.getUint32(0, false);
+  const le = view.getUint32(0, true);
+  if (be === 0xa1b2c3d4) return { little: false, tsresol: 1e-6 };
+  if (le === 0xa1b2c3d4) return { little: true, tsresol: 1e-6 };
+  if (be === 0xa1b23c4d) return { little: false, tsresol: 1e-9 };
+  if (le === 0xa1b23c4d) return { little: true, tsresol: 1e-9 };
+  return null;
+}
+
+function parsePcap(arrayBuffer, options = {}) {
+  const det = detectPcap(arrayBuffer);
+  if (!det) throw new Error('Not a classic PCAP file.');
+  const view = new DataView(arrayBuffer);
+  const allBytes = new Uint8Array(arrayBuffer);
+  const little = det.little;
+  const snapLen = view.getUint32(16, little);
+  const linkType = view.getUint32(20, little);
+  const packets = [];
+  const warnings = [];
+  const skippedByReason = {};
+  const linkTypes = {}; bump(linkTypes, String(linkType));
+  const progressEveryBytes = options.progressEveryBytes || Math.max(1024 * 1024, Math.floor(arrayBuffer.byteLength / 50));
+  let nextProgressAt = progressEveryBytes;
+  let off = 24;
+  function reportProgress(force = false) {
+    if (typeof options.onProgress === 'function' && (force || off >= nextProgressAt)) {
+      options.onProgress({ offset: off, size: arrayBuffer.byteLength, packets: packets.length, phase: 'pcap' });
+      while (nextProgressAt <= off) nextProgressAt += progressEveryBytes;
+    }
+  }
+  while (off + 16 <= arrayBuffer.byteLength) {
+    reportProgress(false);
+    const tsSec = view.getUint32(off, little);
+    const tsFrac = view.getUint32(off + 4, little);
+    const capLen = view.getUint32(off + 8, little);
+    const origLen = view.getUint32(off + 12, little);
+    off += 16;
+    if (off + capLen > arrayBuffer.byteLength) { warnings.push('Truncated packet record at offset ' + (off - 16) + '.'); break; }
+    const packetBytes = allBytes.subarray(off, off + capLen);
+    const decoded = parsePacketBytes(packetBytes, linkType, capLen, origLen || capLen);
+    if (decoded && decoded.src && decoded.dst) {
+      decoded.ts = tsSec + tsFrac * det.tsresol;
+      decoded.iface = 0;
+      decoded.linkType = linkType;
+      decoded.index = packets.length;
+      packets.push(decoded);
+    } else bump(skippedByReason, 'unsupported_or_malformed_linktype_' + linkType);
+    off += capLen;
+  }
+  reportProgress(true);
+  const interfaces = [{ id: 0, globalId: 0, sectionIndex: 0, linkType, snapLen, tsresol: det.tsresol, tsoffset: 0, name: 'pcap0', description: 'Classic PCAP interface', comment: '' }];
+  return enrichPacketsAndSummarize(packets, interfaces, { fileType: 'pcap', fileBytes: arrayBuffer.byteLength, blockCounts: { PCAP_RECORD: packets.length }, linkTypes, skippedByReason, malformedBlocks: 0, warnings, nrbRecords: [] });
+}
+
+function parseCapture(arrayBuffer, options = {}) {
+  const view = new DataView(arrayBuffer);
+  if (arrayBuffer.byteLength >= 12 && (view.getUint32(0, true) === BLOCK_SHB || view.getUint32(0, false) === BLOCK_SHB)) return parsePcapng(arrayBuffer, options);
+  if (detectPcap(arrayBuffer)) return parsePcap(arrayBuffer, options);
+  throw new Error('Unsupported capture format. Expected PCAPNG or classic PCAP.');
+}
+
+function summarizeForReport(parsed) {
+  const s = parsed.summary || {};
+  return {
+    fileBytes: s.fileBytes,
+    fileType: s.fileType,
+    packetsDecoded: s.packetsDecoded,
+    bytesDecoded: s.bytesDecoded,
+    durationSeconds: s.duration,
+    firstTimestamp: s.firstTs,
+    lastTimestamp: s.lastTs,
+    hostCount: s.hostCount,
+    dnsPacketCount: s.dnsPacketCount,
+    dnsResolutionCount: s.dnsResolutionCount,
+    nrbRecordCount: s.nrbRecordCount,
+    interfaces: parsed.interfaces,
+    blockCounts: s.blockCounts,
+    linkTypes: s.linkTypes,
+    protocolCounts: s.protocolCounts,
+    serviceCounts: (s.serviceCounts || []).slice(0, 20),
+    topHosts: (s.hostStats || []).slice(0, 20),
+    topDnsResolutions: (parsed.dns && parsed.dns.resolutions ? parsed.dns.resolutions : []).slice(0, 50),
+    topDnsQueries: (parsed.dns && parsed.dns.queryCounts ? parsed.dns.queryCounts : []).slice(0, 50),
+    skippedByReason: s.skippedByReason,
+    warnings: s.warnings
+  };
+}
+
+if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
+  self.onmessage = (event) => {
+    const msg = event.data || {};
+    if (msg.type !== 'parse') return;
+    const started = Date.now();
+    try {
+      const parsed = parseCapture(msg.buffer, {
+        onProgress: progress => self.postMessage({ type: 'progress', progress })
+      });
+      parsed.summary.parseMillis = Date.now() - started;
+      self.postMessage({ type: 'done', name: msg.name || 'capture.pcapng', parsed });
+    } catch (error) {
+      self.postMessage({ type: 'error', message: error && error.stack ? error.stack : String(error) });
+    }
+  };
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { parseCapture, parsePcapng, parsePcap, parseDnsMessage, summarizeForReport, classifyHost };
+}
+
+  </script>
+  <script>
+(() => {
+  'use strict';
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const els = {
+    fileInput: document.getElementById('fileInput'),
+    fileName: document.getElementById('fileName'),
+    playPause: document.getElementById('playPause'),
+    back10: document.getElementById('back10'),
+    backStep: document.getElementById('backStep'),
+    forwardStep: document.getElementById('forwardStep'),
+    forward10: document.getElementById('forward10'),
+    prevMatch: document.getElementById('prevMatch'),
+    nextMatch: document.getElementById('nextMatch'),
+    speedSelect: document.getElementById('speedSelect'),
+    windowSelect: document.getElementById('windowSelect'),
+    maxNodes: document.getElementById('maxNodes'),
+    maxNodesLabel: document.getElementById('maxNodesLabel'),
+    hostSpacing: document.getElementById('hostSpacing'),
+    hostSpacingLabel: document.getElementById('hostSpacingLabel'),
+    showAll: document.getElementById('showAll'),
+    preferDns: document.getElementById('preferDns'),
+    showIpUnderName: document.getElementById('showIpUnderName'),
+    timeline: document.getElementById('timeline'),
+    currentTime: document.getElementById('currentTime'),
+    durationTime: document.getElementById('durationTime'),
+    snapshot: document.getElementById('snapshot'),
+    resetView: document.getElementById('resetView'),
+    fps: document.getElementById('fps'),
+    searchText: document.getElementById('searchText'),
+    hostFilter: document.getElementById('hostFilter'),
+    srcFilter: document.getElementById('srcFilter'),
+    dstFilter: document.getElementById('dstFilter'),
+    portFilter: document.getElementById('portFilter'),
+    protocolChips: document.getElementById('protocolChips'),
+    clearFilters: document.getElementById('clearFilters'),
+    filterStatus: document.getElementById('filterStatus'),
+    graphShell: document.getElementById('graphShell'),
+    graphSvg: document.getElementById('graphSvg'),
+    gridLayer: document.getElementById('gridLayer'),
+    edgesLayer: document.getElementById('edgesLayer'),
+    particlesLayer: document.getElementById('particlesLayer'),
+    nodesLayer: document.getElementById('nodesLayer'),
+    emptyOverlay: document.getElementById('emptyOverlay'),
+    progressOverlay: document.getElementById('progressOverlay'),
+    progressText: document.getElementById('progressText'),
+    progressFill: document.getElementById('progressFill'),
+    windowRange: document.getElementById('windowRange'),
+    windowPackets: document.getElementById('windowPackets'),
+    windowHosts: document.getElementById('windowHosts'),
+    windowBytes: document.getElementById('windowBytes'),
+    windowEdges: document.getElementById('windowEdges'),
+    summaryPanel: document.getElementById('summaryPanel'),
+    dnsPanel: document.getElementById('dnsPanel'),
+    protocolLegend: document.getElementById('protocolLegend'),
+    topFlows: document.getElementById('topFlows'),
+    packetHits: document.getElementById('packetHits'),
+    hostPanel: document.getElementById('hostPanel'),
+    status: document.getElementById('status')
+  };
+
+  const state = {
+    worker: null,
+    workerUrl: null,
+    capture: null,
+    packets: [],
+    filteredPackets: [],
+    filteredHostStats: [],
+    summary: null,
+    dns: null,
+    hostIndex: new Map(),
+    selectedProtocols: new Set(),
+    filters: null,
+    playing: false,
+    speed: 30,
+    currentTime: 0,
+    previousTime: 0,
+    duration: 0,
+    windowSec: 1,
+    maxNodes: 160,
+    hostSpacing: 1.25,
+    showAll: true,
+    preferDns: true,
+    showIpUnderName: true,
+    selectedHost: null,
+    particles: [],
+    dimensions: { w: 900, h: 640 },
+    lastFrameAt: 0,
+    fpsFrames: 0,
+    fpsStarted: performance.now(),
+    lastPanelAt: 0,
+    layoutKey: '',
+    layout: new Map(),
+    hostSlots: new Map(),
+    hostOrder: [],
+    lastView: null,
+    needsRender: true,
+    filterDebounce: 0
+  };
+
+  function fmtCount(n) {
+    return new Intl.NumberFormat().format(Math.round(Number(n) || 0));
+  }
+
+  function fmtBytes(bytes) {
+    bytes = Number(bytes || 0);
+    if (bytes < 1024) return bytes + ' B';
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let v = bytes / 1024;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
+    return (v >= 10 ? v.toFixed(1) : v.toFixed(2)) + ' ' + units[i];
+  }
+
+  function formatDuration(seconds) {
+    if (!Number.isFinite(seconds)) return '00:00.000';
+    const sign = seconds < 0 ? '-' : '';
+    seconds = Math.abs(seconds);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds - Math.floor(seconds)) * 1000);
+    const tail = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + String(ms).padStart(3, '0');
+    return sign + (h ? h + ':' + tail : tail);
+  }
+
+  function formatAbsTimestamp(ts) {
+    if (!Number.isFinite(ts)) return '--';
+    try { return new Date(ts * 1000).toLocaleString(undefined, { hour12: false }); }
+    catch { return String(ts); }
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function escapeAttr(value) { return escapeHtml(value).replace(/`/g, '&#096;'); }
+
+  function shortenHost(host, max = 26) {
+    host = String(host || '');
+    if (host.length <= max) return host;
+    if (host.includes(':') && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(host)) {
+      const parts = host.split(':');
+      if (parts.length > 4) return parts[0] + ':' + parts[1] + ':...:' + parts[parts.length - 1];
+    }
+    const left = Math.max(6, Math.floor(max * 0.45));
+    const right = Math.max(5, max - left - 3);
+    return host.slice(0, left) + '...' + host.slice(-right);
+  }
+
+  function hashString(s) {
+    s = String(s || '');
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function protocolClass(protocolOrService) {
+    const p = String(protocolOrService || '').toLowerCase();
+    if (p.includes('tcp') || p.includes('http') || p.includes('https') || p.includes('quic')) return 'tcp';
+    if (p.includes('udp') || p.includes('dns') || p.includes('mdns') || p.includes('llmnr') || p.includes('dhcp') || p.includes('ntp')) return 'udp';
+    if (p.includes('arp')) return 'arp';
+    if (p.includes('icmp') || p.includes('igmp')) return 'icmp';
+    return 'other';
+  }
+
+  function classifyHost(host) {
+    const meta = state.hostIndex.get(host);
+    if (meta && meta.className) return meta.className;
+    if (!host) return 'remote';
+    if (host === '255.255.255.255' || String(host).toLowerCase() === 'ff:ff:ff:ff:ff:ff') return 'broadcast';
+    if (/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(host)) {
+      const first = parseInt(host.slice(0, 2), 16);
+      return (first & 1) ? 'multicast' : 'mac';
+    }
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      const p = host.split('.').map(Number);
+      if (p[0] >= 224 && p[0] <= 239) return 'multicast';
+      if (p[0] === 10 || p[0] === 127 || (p[0] === 192 && p[1] === 168) || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 169 && p[1] === 254)) return 'local';
+      return 'remote';
+    }
+    const h = String(host).toLowerCase();
+    if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')) return 'local';
+    if (h.startsWith('ff')) return 'multicast';
+    return 'remote';
+  }
+
+  function hostLabel(host) {
+    const meta = state.hostIndex.get(host);
+    if (state.preferDns && meta && meta.label && meta.label !== host) return meta.label;
+    return host;
+  }
+
+  function hostDisplay(host, withIp = true) {
+    const label = hostLabel(host);
+    if (withIp && state.preferDns && state.showIpUnderName && label !== host) return label + ' (' + host + ')';
+    return label;
+  }
+
+  function hostSearchText(host) {
+    const meta = state.hostIndex.get(host);
+    const parts = [host];
+    if (meta) parts.push(meta.label, ...(meta.names || []));
+    return parts.filter(Boolean).join(' ').toLowerCase();
+  }
+
+  function classRank(className) {
+    return ({ local: 0, remote: 1, mac: 2, multicast: 3, broadcast: 4, other: 5 })[className] ?? 6;
+  }
+
+  function buildHostStatsFromPackets(packets) {
+    const map = new Map();
+    function ensure(host, rel) {
+      if (!map.has(host)) {
+        const meta = state.hostIndex.get(host) || { host, label: host, names: [], className: classifyHost(host) };
+        map.set(host, {
+          host,
+          label: meta.label || host,
+          names: (meta.names || []).slice(),
+          className: meta.className || classifyHost(host),
+          sentPackets: 0, recvPackets: 0, sentBytes: 0, recvBytes: 0, totalPackets: 0, totalBytes: 0,
+          firstSeen: rel, lastSeen: rel
+        });
+      }
+      const item = map.get(host);
+      if (!Number.isFinite(item.firstSeen) || rel < item.firstSeen) item.firstSeen = rel;
+      if (!Number.isFinite(item.lastSeen) || rel > item.lastSeen) item.lastSeen = rel;
+      return item;
+    }
+    for (const p of packets || []) {
+      const s = ensure(p.src, p.rel);
+      const d = ensure(p.dst, p.rel);
+      s.sentPackets += 1; s.sentBytes += p.bytes || 0; s.totalPackets += 1; s.totalBytes += p.bytes || 0;
+      d.recvPackets += 1; d.recvBytes += p.bytes || 0; d.totalPackets += 1; d.totalBytes += p.bytes || 0;
+    }
+    const stats = Array.from(map.values()).sort((a, b) =>
+      (Number.isFinite(a.firstSeen) ? a.firstSeen : Infinity) - (Number.isFinite(b.firstSeen) ? b.firstSeen : Infinity) ||
+      b.totalPackets - a.totalPackets ||
+      classRank(a.className) - classRank(b.className) ||
+      a.host.localeCompare(b.host)
+    );
+    for (const item of stats) {
+      const prev = state.hostIndex.get(item.host) || {};
+      state.hostIndex.set(item.host, Object.assign({}, prev, item, {
+        label: item.label || prev.label || item.host,
+        names: item.names && item.names.length ? item.names : (prev.names || []),
+        className: item.className || prev.className || classifyHost(item.host)
+      }));
+    }
+    return stats;
+  }
+
+  function rebuildHostSlots(stats) {
+    state.hostSlots.clear();
+    state.hostOrder = [];
+    (stats || []).forEach((meta, index) => {
+      state.hostSlots.set(meta.host, index);
+      state.hostOrder.push(meta.host);
+    });
+  }
+
+  function binarySearchPackets(packets, relTime) {
+    let lo = 0, hi = packets.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (packets[mid].rel < relTime) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function makeWorker() {
+    if (state.worker) state.worker.terminate();
+    if (state.workerUrl) URL.revokeObjectURL(state.workerUrl);
+    const workerSource = document.getElementById('workerSource').textContent;
+    const blob = new Blob([workerSource], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    const worker = new Worker(url);
+    state.worker = worker;
+    state.workerUrl = url;
+    worker.onmessage = event => {
+      const msg = event.data || {};
+      if (msg.type === 'progress') {
+        const p = msg.progress || {};
+        const pct = p.size ? Math.min(100, Math.max(0, (p.offset / p.size) * 100)) : 0;
+        els.progressFill.style.width = pct.toFixed(1) + '%';
+        els.progressText.textContent = 'Decoded ' + fmtCount(p.packets) + ' packets while scanning ' + pct.toFixed(0) + '% of the file...';
+      } else if (msg.type === 'done') {
+        finishLoad(msg.name, msg.parsed);
+      } else if (msg.type === 'error') {
+        failLoad(msg.message || 'Unknown parser error');
+      }
+    };
+    worker.onerror = event => failLoad(event.message || 'Worker error');
+    return worker;
+  }
+
+  async function loadFile(file) {
+    if (!file) return;
+    resetCaptureState();
+    els.fileName.textContent = file.name;
+    els.emptyOverlay.classList.add('hidden');
+    els.progressOverlay.classList.remove('hidden');
+    els.progressFill.style.width = '0%';
+    els.progressText.textContent = 'Reading ' + fmtBytes(file.size) + ' from disk...';
+    els.status.textContent = 'Reading file into browser memory...';
+    try {
+      const buffer = await file.arrayBuffer();
+      const worker = makeWorker();
+      els.progressText.textContent = 'Parsing capture blocks and DNS records...';
+      worker.postMessage({ type: 'parse', name: file.name, buffer }, [buffer]);
+    } catch (error) {
+      failLoad(error && error.stack ? error.stack : String(error));
+    }
+  }
+
+  function failLoad(message) {
+    els.progressOverlay.classList.add('hidden');
+    els.emptyOverlay.classList.remove('hidden');
+    els.status.textContent = 'Could not load capture: ' + message;
+    console.error(message);
+  }
+
+  function resetCaptureState() {
+    state.capture = null;
+    state.packets = [];
+    state.filteredPackets = [];
+    state.filteredHostStats = [];
+    state.summary = null;
+    state.dns = null;
+    state.hostIndex.clear();
+    state.selectedProtocols.clear();
+    state.filters = null;
+    state.playing = false;
+    state.currentTime = 0;
+    state.previousTime = 0;
+    state.duration = 0;
+    state.selectedHost = null;
+    state.particles = [];
+    state.layoutKey = '';
+    state.layout.clear();
+    state.hostSlots.clear();
+    state.hostOrder = [];
+    state.lastView = null;
+    updateControlsEnabled(false);
+    updatePlaybackButton();
+    renderSummary(null);
+    renderDnsPanel(null);
+    renderProtocolFilter(null);
+    renderHostPanel(null, null);
+    renderEmptyGraph();
+    updateFilterStatus();
+  }
+
+  function finishLoad(name, parsed) {
+    state.capture = parsed;
+    state.packets = parsed.packets || [];
+    state.filteredPackets = state.packets;
+    state.summary = parsed.summary || {};
+    state.dns = parsed.dns || null;
+    state.duration = state.summary.duration || 0;
+    state.currentTime = 0;
+    state.previousTime = 0;
+    state.particles = [];
+    state.hostIndex.clear();
+    for (const h of state.summary.hostStats || []) state.hostIndex.set(h.host, h);
+    state.filteredHostStats = buildHostStatsFromPackets(state.filteredPackets);
+    rebuildHostSlots(state.filteredHostStats);
+    els.progressOverlay.classList.add('hidden');
+    els.emptyOverlay.classList.add('hidden');
+    els.fileName.textContent = name + ' - ' + fmtCount(state.summary.packetsDecoded) + ' packets - ' + formatDuration(state.duration);
+    els.timeline.max = Math.max(0, state.duration).toFixed(3);
+    els.timeline.value = '0';
+    els.durationTime.textContent = formatDuration(state.duration);
+    updateControlsEnabled(true);
+    renderSummary(state.summary);
+    renderDnsPanel(state.dns);
+    renderProtocolFilter(state.summary);
+    applyFilters(false);
+    setTime(0, true);
+    els.status.textContent = 'Loaded ' + fmtCount(state.summary.packetsDecoded) + ' decoded packets, ' + fmtCount(state.summary.hostCount) + ' hosts, ' + fmtCount(state.summary.dnsPacketCount) + ' DNS-family packets, ' + fmtCount(state.summary.dnsResolutionCount) + ' resolved name entries. Hosts stay on the diagram after discovery, and layout is rendered left-to-right, top-to-bottom.';
+  }
+
+  function updateControlsEnabled(enabled) {
+    for (const el of [els.playPause, els.back10, els.backStep, els.forwardStep, els.forward10, els.prevMatch, els.nextMatch, els.timeline, els.snapshot, els.resetView, els.clearFilters, els.maxNodes, els.hostSpacing, els.showAll]) {
+      el.disabled = !enabled;
+    }
+    for (const el of [els.searchText, els.hostFilter, els.srcFilter, els.dstFilter, els.portFilter, els.preferDns, els.showIpUnderName]) {
+      el.disabled = !enabled;
+    }
+  }
+
+  function updatePlaybackButton() {
+    els.playPause.textContent = state.playing ? 'Pause' : 'Play';
+  }
+
+  function setTime(t, seeking = false) {
+    state.previousTime = state.currentTime;
+    state.currentTime = Math.max(0, Math.min(state.duration, Number(t) || 0));
+    els.timeline.value = String(state.currentTime);
+    els.currentTime.textContent = formatDuration(state.currentTime);
+    if (seeking) state.particles = [];
+    state.needsRender = true;
+  }
+
+  function parsePortFilter(value) {
+    const text = String(value || '').trim();
+    if (!text) return [];
+    const ranges = [];
+    for (const token of text.split(/[\s,;]+/).filter(Boolean)) {
+      const m = token.match(/^(\d{1,5})(?:-(\d{1,5}))?$/);
+      if (!m) continue;
+      const a = Math.max(0, Math.min(65535, Number(m[1])));
+      const b = Math.max(0, Math.min(65535, Number(m[2] || m[1])));
+      ranges.push({ a: Math.min(a, b), b: Math.max(a, b) });
+    }
+    return ranges;
+  }
+
+  function portMatches(port, ranges) {
+    if (!Number.isFinite(port)) return false;
+    for (const r of ranges) if (port >= r.a && port <= r.b) return true;
+    return false;
+  }
+
+  function readFilters() {
+    const textTokens = els.searchText.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const hostTokens = els.hostFilter.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const srcTokens = els.srcFilter.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const dstTokens = els.dstFilter.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const portRanges = parsePortFilter(els.portFilter.value);
+    const protocols = new Set(Array.from(state.selectedProtocols).map(s => s.toLowerCase()));
+    const active = textTokens.length || hostTokens.length || srcTokens.length || dstTokens.length || portRanges.length || protocols.size;
+    return { textTokens, hostTokens, srcTokens, dstTokens, portRanges, protocols, active: Boolean(active) };
+  }
+
+  function tokensMatch(text, tokens) {
+    if (!tokens.length) return true;
+    text = String(text || '').toLowerCase();
+    return tokens.every(t => text.includes(t));
+  }
+
+  function packetMatches(p, filters) {
+    if (filters.protocols.size) {
+      const protocol = String(p.protocol || '').toLowerCase();
+      const service = String(p.service || '').toLowerCase();
+      let ok = false;
+      for (const wanted of filters.protocols) {
+        if (protocol === wanted || service === wanted || protocol.includes(wanted) || service.includes(wanted)) { ok = true; break; }
+      }
+      if (!ok) return false;
+    }
+    if (filters.portRanges.length && !portMatches(p.sport, filters.portRanges) && !portMatches(p.dport, filters.portRanges)) return false;
+    const srcText = hostSearchText(p.src);
+    const dstText = hostSearchText(p.dst);
+    if (!tokensMatch(srcText + ' ' + dstText, filters.hostTokens)) return false;
+    if (!tokensMatch(srcText, filters.srcTokens)) return false;
+    if (!tokensMatch(dstText, filters.dstTokens)) return false;
+    if (!tokensMatch(p.search || '', filters.textTokens)) return false;
+    return true;
+  }
+
+
+  function applyFilters(debounced = true) {
+    if (!state.capture) return;
+    if (debounced) {
+      clearTimeout(state.filterDebounce);
+      state.filterDebounce = setTimeout(() => applyFilters(false), 120);
+      return;
+    }
+    const filters = readFilters();
+    state.filters = filters;
+    if (!filters.active) {
+      state.filteredPackets = state.packets;
+    } else {
+      state.filteredPackets = state.packets.filter(p => packetMatches(p, filters));
+    }
+    state.filteredHostStats = buildHostStatsFromPackets(state.filteredPackets);
+    rebuildHostSlots(state.filteredHostStats);
+    state.layoutKey = '';
+    state.particles = [];
+    updateFilterStatus();
+    state.needsRender = true;
+  }
+
+  function updateFilterStatus() {
+    if (!state.capture) {
+      els.filterStatus.innerHTML = 'Load a capture, then search by host name, IP address, port, protocol, service, DNS question, DNS answer, or flow text.';
+      return;
+    }
+    const count = state.filteredPackets.length;
+    const total = state.packets.length;
+    const pct = total ? (count / total * 100) : 0;
+    const activeBits = [];
+    if (state.filters && state.filters.textTokens.length) activeBits.push('text');
+    if (state.filters && state.filters.hostTokens.length) activeBits.push('host');
+    if (state.filters && state.filters.srcTokens.length) activeBits.push('source');
+    if (state.filters && state.filters.dstTokens.length) activeBits.push('destination');
+    if (state.filters && state.filters.portRanges.length) activeBits.push('port');
+    if (state.filters && state.filters.protocols.size) activeBits.push('protocol/service');
+    const first = count ? formatDuration(state.filteredPackets[0].rel) : '--';
+    const last = count ? formatDuration(state.filteredPackets[count - 1].rel) : '--';
+    els.filterStatus.innerHTML = '<strong>' + fmtCount(count) + '</strong> of ' + fmtCount(total) + ' packets match (' + pct.toFixed(1) + '%). ' +
+      '<span class="muted">Active filters: ' + (activeBits.length ? activeBits.join(', ') : 'none') + '. Match range: ' + first + ' to ' + last + '.</span>';
+  }
+
+  function clearFilters() {
+    els.searchText.value = '';
+    els.hostFilter.value = '';
+    els.srcFilter.value = '';
+    els.dstFilter.value = '';
+    els.portFilter.value = '';
+    state.selectedProtocols.clear();
+    for (const btn of els.protocolChips.querySelectorAll('.chip.active')) btn.classList.remove('active');
+    applyFilters(false);
+  }
+
+  function jumpMatch(direction) {
+    if (!state.filteredPackets.length) return;
+    const packets = state.filteredPackets;
+    const t = state.currentTime;
+    let idx;
+    if (direction > 0) {
+      idx = binarySearchPackets(packets, t + 0.001);
+      if (idx >= packets.length) idx = 0;
+    } else {
+      idx = binarySearchPackets(packets, t - 0.001) - 1;
+      if (idx < 0) idx = packets.length - 1;
+    }
+    setTime(packets[idx].rel, true);
+  }
+
+  function renderProtocolFilter(summary) {
+    if (!summary) {
+      els.protocolChips.innerHTML = '<span class="muted">Protocols appear after a capture is loaded.</span>';
+      return;
+    }
+    const order = [];
+    const seen = new Set();
+    function add(name, count) {
+      if (!name) return;
+      const key = String(name).toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      order.push({ name: String(name), count: Number(count || 0) });
+    }
+    for (const [name, count] of summary.protocolCounts || []) add(name, count);
+    for (const [name, count] of summary.serviceCounts || []) {
+      if (/^(DNS|MDNS|LLMNR|HTTP|HTTPS|QUIC|DHCP|NTP|SSDP|SMB|RDP|SSH|ARP|ICMP|ICMPv6|UDP|TCP)/i.test(name)) add(name, count);
+    }
+    els.protocolChips.innerHTML = order.slice(0, 28).map(item => '<button type="button" class="chip" data-protocol="' + escapeAttr(item.name) + '">' + escapeHtml(item.name) + ' <span>' + fmtCount(item.count) + '</span></button>').join('');
+  }
+
+  function buildWindowView() {
+    const packets = state.filteredPackets || [];
+    const start = state.currentTime;
+    const end = Math.min(state.duration, start + state.windowSec);
+    const i = binarySearchPackets(packets, start);
+    const viewPackets = [];
+    const hosts = new Map();
+    const edges = new Map();
+    const protocolCounts = {};
+    let bytes = 0;
+    for (let j = i; j < packets.length; j++) {
+      const p = packets[j];
+      if (p.rel > end) break;
+      viewPackets.push(p);
+      bytes += p.bytes || 0;
+      bumpObj(protocolCounts, p.service || p.protocol, 1);
+      if (!hosts.has(p.src)) hosts.set(p.src, { host: p.src, sent: 0, recv: 0, bytes: 0, packets: 0 });
+      if (!hosts.has(p.dst)) hosts.set(p.dst, { host: p.dst, sent: 0, recv: 0, bytes: 0, packets: 0 });
+      const sh = hosts.get(p.src);
+      const dh = hosts.get(p.dst);
+      sh.sent += 1; sh.bytes += p.bytes || 0; sh.packets += 1;
+      dh.recv += 1; dh.bytes += p.bytes || 0; dh.packets += 1;
+      const key = p.src + '\u0000' + p.dst + '\u0000' + (p.service || p.protocol) + '\u0000' + (p.sport || '') + '\u0000' + (p.dport || '');
+      if (!edges.has(key)) edges.set(key, { key, src: p.src, dst: p.dst, protocol: p.protocol, service: p.service || p.protocol, sport: p.sport, dport: p.dport, packets: 0, bytes: 0, lastRel: p.rel, detail: p.detail || '' });
+      const e = edges.get(key);
+      e.packets += 1;
+      e.bytes += p.bytes || 0;
+      e.lastRel = p.rel;
+      if (p.detail) e.detail = p.detail;
+    }
+    const edgeList = Array.from(edges.values()).sort((a, b) => b.packets - a.packets || b.bytes - a.bytes);
+    return { start, end, packets: viewPackets, hosts, edges: edgeList, protocolCounts, bytes };
+  }
+
+  function bumpObj(obj, key, inc) { obj[key] = (obj[key] || 0) + inc; }
+
+  function packetsBetween(t0, t1) {
+    const packets = state.filteredPackets || [];
+    if (!packets.length || t1 <= t0) return [];
+    const i = binarySearchPackets(packets, t0);
+    const j = binarySearchPackets(packets, t1 + 0.000001);
+    const count = j - i;
+    if (count <= 0) return [];
+    const limit = 220;
+    if (count <= limit) return packets.slice(i, j);
+    const stride = Math.ceil(count / limit);
+    const sample = [];
+    for (let k = i; k < j; k += stride) sample.push(packets[k]);
+    return sample;
+  }
+
+  function visibleNodesForView(view) {
+    const nodeMap = new Map();
+    for (const h of view.hosts.values()) {
+      const meta = state.hostIndex.get(h.host) || {};
+      nodeMap.set(h.host, {
+        host: h.host,
+        label: meta.label || hostLabel(h.host),
+        className: meta.className || classifyHost(h.host),
+        active: true,
+        windowPackets: h.packets,
+        windowBytes: h.bytes,
+        totalPackets: meta.totalPackets || h.packets,
+        totalBytes: meta.totalBytes || h.bytes,
+        firstSeen: meta.firstSeen
+      });
+    }
+    if (state.showAll) {
+      const cutoff = Math.min(state.duration, state.currentTime + state.windowSec + 0.000001);
+      for (const host of state.hostOrder || []) {
+        if (nodeMap.size >= state.maxNodes) break;
+        const meta = state.hostIndex.get(host) || {};
+        const firstSeen = Number.isFinite(meta.firstSeen) ? meta.firstSeen : Infinity;
+        if (firstSeen > cutoff) continue;
+        if (!nodeMap.has(host)) nodeMap.set(host, {
+          host,
+          label: meta.label || hostLabel(host),
+          className: meta.className || classifyHost(host),
+          active: false,
+          windowPackets: 0,
+          windowBytes: 0,
+          totalPackets: meta.totalPackets || 0,
+          totalBytes: meta.totalBytes || 0,
+          firstSeen
+        });
+      }
+    }
+    let nodes = Array.from(nodeMap.values());
+    nodes.forEach(n => { n.slot = state.hostSlots.has(n.host) ? state.hostSlots.get(n.host) : Number.MAX_SAFE_INTEGER; });
+    nodes.sort((a, b) => (a.slot - b.slot) || Number(b.active) - Number(a.active) || b.windowPackets - a.windowPackets || b.totalPackets - a.totalPackets || a.host.localeCompare(b.host));
+    nodes = nodes.slice(0, state.maxNodes);
+    return nodes;
+  }
+
+  function computeLayout(nodes) {
+    const w = state.dimensions.w;
+    const h = state.dimensions.h;
+    const ordered = nodes.slice().sort((a, b) => (a.slot - b.slot) || a.host.localeCompare(b.host));
+    const key = w + 'x' + h + '|' + state.hostSpacing.toFixed(2) + '|' + ordered.map(n => n.host).join('|');
+    if (key === state.layoutKey && state.layout.size) return state.layout;
+    state.layoutKey = key;
+    const layout = new Map();
+    const n = ordered.length;
+    if (!n) { state.layout = layout; return layout; }
+
+    const padLeft = 76, padRight = 76, padTop = 54, padBottom = 96;
+    const availW = Math.max(180, w - padLeft - padRight);
+    const availH = Math.max(180, h - padTop - padBottom);
+    const baseCellW = 118 * state.hostSpacing;
+    const baseCellH = 94 * state.hostSpacing;
+    const minCellW = 74;
+    const maxCols = Math.max(1, Math.min(n, Math.floor(availW / minCellW)));
+    let best = null;
+    for (let cols = 1; cols <= maxCols; cols++) {
+      const rows = Math.ceil(n / cols);
+      const scale = Math.min(1, availW / (cols * baseCellW), availH / (rows * baseCellH));
+      const fill = scale * Math.min(1, cols / Math.max(1, rows));
+      if (!best || scale > best.scale + 1e-9 || (Math.abs(scale - best.scale) < 1e-9 && fill > best.fill)) {
+        best = { cols, rows, scale, fill };
+      }
+    }
+    const cols = best.cols;
+    const rows = best.rows;
+    const cellW = Math.max(minCellW, baseCellW * best.scale);
+    const cellH = Math.max(68, baseCellH * best.scale);
+    const usedW = Math.min(availW, cols * cellW);
+    const usedH = Math.min(availH, rows * cellH);
+    const offsetX = padLeft + Math.max(0, (availW - usedW) / 2);
+    const offsetY = padTop + Math.max(0, (availH - usedH) / 2);
+
+    ordered.forEach((node, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = offsetX + col * cellW + cellW / 2;
+      const y = offsetY + row * cellH + cellH / 2;
+      layout.set(node.host, { x, y, r: nodeRadius(node), node });
+    });
+
+    state.layout = layout;
+    return layout;
+  }
+
+  function nodeRadius(node) {
+    const score = (node.windowPackets || 0) * 3.2 + Math.log10((node.totalPackets || 1) + 1) * 7.2;
+    const cap = Math.max(16, Math.min(22, 14 + (state.hostSpacing - 1) * 4));
+    return Math.max(6, Math.min(cap, 6 + score));
+  }
+
+  function updateDimensions() {
+    const rect = els.graphShell.getBoundingClientRect();
+    const w = Math.max(640, Math.floor(rect.width));
+    const h = Math.max(420, Math.floor(rect.height));
+    if (w !== state.dimensions.w || h !== state.dimensions.h) {
+      state.dimensions = { w, h };
+      els.graphSvg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      drawGrid();
+      state.layoutKey = '';
+    }
+  }
+
+  function drawGrid() {
+    const w = state.dimensions.w, h = state.dimensions.h;
+    const step = 80;
+    let html = '';
+    for (let x = step; x < w; x += step) html += '<line class="grid-line" x1="' + x + '" y1="0" x2="' + x + '" y2="' + h + '"></line>';
+    for (let y = step; y < h; y += step) html += '<line class="grid-line" x1="0" y1="' + y + '" x2="' + w + '" y2="' + y + '"></line>';
+    els.gridLayer.innerHTML = html;
+  }
+
+  function renderEmptyGraph() {
+    updateDimensions();
+    drawGrid();
+    els.edgesLayer.innerHTML = '';
+    els.particlesLayer.innerHTML = '';
+    els.nodesLayer.innerHTML = '';
+  }
+
+  function addParticles(crossed, layout, now) {
+    if (!crossed || !crossed.length) return;
+    for (const p of crossed) {
+      if (!layout.has(p.src) || !layout.has(p.dst)) continue;
+      state.particles.push({ src: p.src, dst: p.dst, protocol: p.service || p.protocol, bytes: p.bytes || 0, created: now, ttl: 850 + Math.min(600, Math.log10((p.bytes || 1) + 1) * 110) });
+    }
+    if (state.particles.length > 700) state.particles.splice(0, state.particles.length - 700);
+  }
+
+  function renderGraph(view, crossed, now) {
+    updateDimensions();
+    const nodes = visibleNodesForView(view);
+    const layout = computeLayout(nodes);
+    const visible = new Set(nodes.map(n => n.host));
+    addParticles(crossed, layout, now);
+
+    const maxEdges = 700;
+    const edges = view.edges.filter(e => visible.has(e.src) && visible.has(e.dst)).slice(0, maxEdges);
+    let edgeHtml = '';
+    const maxPkts = Math.max(1, ...edges.map(e => e.packets));
+    edges.forEach((e, idx) => {
+      const a = layout.get(e.src), b = layout.get(e.dst);
+      if (!a || !b) return;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      const ux = dx / len, uy = dy / len;
+      const startX = a.x + ux * (a.r + 2), startY = a.y + uy * (a.r + 2);
+      const endX = b.x - ux * (b.r + 5), endY = b.y - uy * (b.r + 5);
+      const curve = ((hashString(e.key) % 1000) / 1000 - 0.5) * 48;
+      const mx = (startX + endX) / 2 - uy * curve;
+      const my = (startY + endY) / 2 + ux * curve;
+      const width = 1.1 + Math.log1p(e.packets) / Math.log1p(maxPkts) * 5.4;
+      const cls = protocolClass(e.service || e.protocol);
+      edgeHtml += '<path class="edge ' + cls + '" d="M' + startX.toFixed(1) + ',' + startY.toFixed(1) + ' Q' + mx.toFixed(1) + ',' + my.toFixed(1) + ' ' + endX.toFixed(1) + ',' + endY.toFixed(1) + '" stroke-width="' + width.toFixed(2) + '" marker-end="url(#arrow)"><title>' + escapeHtml(hostDisplay(e.src) + ' -> ' + hostDisplay(e.dst) + ' ' + e.service + ' ' + e.packets + ' packets') + '</title></path>';
+      if (idx < 34) {
+        edgeHtml += '<text class="edge-label" x="' + mx.toFixed(1) + '" y="' + my.toFixed(1) + '" text-anchor="middle">' + escapeHtml(e.service + ' ' + e.packets) + '</text>';
+      }
+    });
+    els.edgesLayer.innerHTML = edgeHtml;
+
+    const alive = [];
+    let particleHtml = '';
+    for (const part of state.particles) {
+      const age = now - part.created;
+      if (age > part.ttl) continue;
+      const a = layout.get(part.src), b = layout.get(part.dst);
+      if (!a || !b) continue;
+      const t = Math.max(0, Math.min(1, age / part.ttl));
+      const ease = 1 - Math.pow(1 - t, 2);
+      const x = a.x + (b.x - a.x) * ease;
+      const y = a.y + (b.y - a.y) * ease;
+      const size = Math.max(2.5, Math.min(8, 2.5 + Math.log10(part.bytes + 1)));
+      const opacity = Math.max(0, 1 - t);
+      const cls = protocolClass(part.protocol);
+      particleHtml += '<circle class="particle ' + cls + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + size.toFixed(1) + '" opacity="' + opacity.toFixed(2) + '"></circle>';
+      alive.push(part);
+    }
+    state.particles = alive;
+    els.particlesLayer.innerHTML = particleHtml;
+
+    let nodeHtml = '';
+    for (const n of nodes) {
+      const p = layout.get(n.host);
+      if (!p) continue;
+      const label = hostLabel(n.host);
+      const sub = state.showIpUnderName && label !== n.host ? n.host : '';
+      const cls = 'node ' + (n.className || 'remote') + (n.active ? '' : ' inactive') + (state.selectedHost === n.host ? ' selected' : '');
+      const title = hostDisplay(n.host) + '\nPackets now: ' + n.windowPackets + '\nTotal packets: ' + n.totalPackets;
+      nodeHtml += '<g class="' + cls + '" data-host="' + escapeAttr(n.host) + '"><title>' + escapeHtml(title) + '</title>';
+      if (state.selectedHost === n.host) nodeHtml += '<circle class="halo" cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (p.r + 9).toFixed(1) + '"></circle>';
+      nodeHtml += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + p.r.toFixed(1) + '"></circle>';
+      nodeHtml += '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + p.r + 14).toFixed(1) + '" text-anchor="middle">' + escapeHtml(shortenHost(label, 28)) + '</text>';
+      if (sub) nodeHtml += '<text class="subtext" x="' + p.x.toFixed(1) + '" y="' + (p.y + p.r + 27).toFixed(1) + '" text-anchor="middle">' + escapeHtml(shortenHost(sub, 24)) + '</text>';
+      nodeHtml += '</g>';
+    }
+    els.nodesLayer.innerHTML = nodeHtml;
+  }
+
+  function renderSidePanels(view, force = false) {
+    const now = performance.now();
+    if (!force && now - state.lastPanelAt < 180) return;
+    state.lastPanelAt = now;
+    state.lastView = view;
+    els.windowRange.textContent = formatDuration(view.start) + ' - ' + formatDuration(view.end);
+    els.windowPackets.textContent = fmtCount(view.packets.length);
+    els.windowHosts.textContent = fmtCount(view.hosts.size);
+    els.windowBytes.textContent = fmtBytes(view.bytes);
+    els.windowEdges.textContent = fmtCount(view.edges.length);
+    renderProtocols(view.protocolCounts);
+    renderTopFlows(view.edges);
+    renderPacketHits(view.packets);
+    renderHostPanel(state.selectedHost, view);
+  }
+
+  function renderSummary(summary) {
+    if (!summary) {
+      els.summaryPanel.innerHTML = '<div class="kv"><span class="k">Status</span><span class="v">No capture loaded</span></div>';
+      return;
+    }
+    const linkTypes = Object.entries(summary.linkTypes || {}).map(([k, v]) => k + ' (' + v + ')').join(', ') || '--';
+    const warnings = (summary.warnings || []).slice(0, 3).join(' | ');
+    els.summaryPanel.innerHTML = [
+      kv('Type', summary.fileType || 'pcapng'),
+      kv('Packets', fmtCount(summary.packetsDecoded)),
+      kv('Bytes decoded', fmtBytes(summary.bytesDecoded)),
+      kv('Duration', formatDuration(summary.duration)),
+      kv('First packet', formatAbsTimestamp(summary.firstTs)),
+      kv('Last packet', formatAbsTimestamp(summary.lastTs)),
+      kv('Hosts', fmtCount(summary.hostCount)),
+      kv('DNS packets', fmtCount(summary.dnsPacketCount || 0)),
+      kv('Resolved names', fmtCount(summary.dnsResolutionCount || 0)),
+      kv('Link types', linkTypes),
+      warnings ? kv('Warnings', warnings) : ''
+    ].join('');
+  }
+
+  function renderDnsPanel(dns) {
+    if (!dns) {
+      els.dnsPanel.innerHTML = '<div class="kv"><span class="k">Status</span><span class="v">DNS names appear after parsing DNS, mDNS, LLMNR, or PCAPNG NRB records.</span></div>';
+      return;
+    }
+    const rows = (dns.resolutions || []).slice(0, 12).map(r => '<tr><td>' + escapeHtml(shortenHost(r.name, 32)) + '</td><td>' + escapeHtml(shortenHost(r.address, 22)) + '</td><td class="num">' + fmtCount(r.count) + '</td></tr>').join('');
+    const queries = (dns.queryCounts || []).slice(0, 8).map(([name, count]) => '<span class="pill">' + escapeHtml(shortenHost(name, 28)) + ' <strong>' + fmtCount(count) + '</strong></span>').join(' ');
+    els.dnsPanel.innerHTML =
+      '<div class="kv"><span class="k">DNS packets</span><span class="v">' + fmtCount(dns.dnsPacketCount || 0) + '</span></div>' +
+      '<div class="kv"><span class="k">Name entries</span><span class="v">' + fmtCount((dns.resolutions || []).length) + '</span></div>' +
+      '<table class="mini-table"><thead><tr><th>Name</th><th>Address</th><th class="num">Hits</th></tr></thead><tbody>' + (rows || '<tr><td colspan="3" class="muted">No address answers found</td></tr>') + '</tbody></table>' +
+      '<div class="chip-note">Top DNS questions</div><div class="pill-wrap">' + (queries || '<span class="muted">No DNS questions decoded</span>') + '</div>';
+  }
+
+  function kv(k, v) {
+    return '<div class="kv"><span class="k">' + escapeHtml(k) + '</span><span class="v">' + escapeHtml(v) + '</span></div>';
+  }
+
+  function renderProtocols(protocolCounts) {
+    const entries = Object.entries(protocolCounts || {}).sort((a, b) => b[1] - a[1]).slice(0, 14);
+    if (!entries.length) {
+      els.protocolLegend.innerHTML = '<span class="muted">No packets in this window</span>';
+      return;
+    }
+    els.protocolLegend.innerHTML = entries.map(([name, count]) => '<span class="pill"><span class="dot ' + protocolClass(name) + '"></span>' + escapeHtml(name) + ' ' + fmtCount(count) + '</span>').join('');
+  }
+
+  function renderTopFlows(edges) {
+    const top = (edges || []).slice(0, 12);
+    if (!top.length) {
+      els.topFlows.innerHTML = '<tr><td colspan="4" class="muted">No packets in this window</td></tr>';
+      return;
+    }
+    els.topFlows.innerHTML = top.map(e => '<tr><td>' + escapeHtml(shortenHost(hostDisplay(e.src), 24)) + ' -> ' + escapeHtml(shortenHost(hostDisplay(e.dst), 24)) + '</td><td>' + escapeHtml(e.service || e.protocol) + '</td><td>' + escapeHtml(portPair(e)) + '</td><td class="num">' + fmtCount(e.packets) + '</td></tr>').join('');
+  }
+
+  function portPair(e) {
+    if (Number.isFinite(e.sport) && Number.isFinite(e.dport)) return e.sport + ' -> ' + e.dport;
+    return '--';
+  }
+
+  function renderPacketHits(packets) {
+    const rows = (packets || []).slice(0, 12).map(p => '<tr><td>' + escapeHtml(formatDuration(p.rel)) + '</td><td>' + escapeHtml(shortenHost(hostDisplay(p.src), 22)) + ' -> ' + escapeHtml(shortenHost(hostDisplay(p.dst), 22)) + '</td><td>' + escapeHtml(p.service || p.protocol) + '</td><td>' + escapeHtml(shortenHost(p.detail || portPair(p), 36)) + '</td></tr>').join('');
+    els.packetHits.innerHTML = rows || '<tr><td colspan="4" class="muted">No matching packets in this window</td></tr>';
+  }
+
+  function renderHostPanel(host, view) {
+    if (!host) {
+      els.hostPanel.innerHTML = '<div class="kv"><span class="k">Tip</span><span class="v">Click a node to pin host details here. DNS aliases are searchable.</span></div>';
+      return;
+    }
+    const meta = state.hostIndex.get(host) || { host, label: hostLabel(host), names: [], className: classifyHost(host) };
+    const current = view && view.hosts ? view.hosts.get(host) : null;
+    const names = (meta.names || []).slice(0, 12).map(n => '<span class="pill">' + escapeHtml(shortenHost(n, 34)) + '</span>').join(' ');
+    els.hostPanel.innerHTML = [
+      kv('Display', hostDisplay(host)),
+      kv('Address', host),
+      kv('Class', meta.className || classifyHost(host)),
+      kv('Total packets', fmtCount(meta.totalPackets || 0)),
+      kv('Total bytes', fmtBytes(meta.totalBytes || 0)),
+      kv('Sent / recv', fmtCount(meta.sentPackets || 0) + ' / ' + fmtCount(meta.recvPackets || 0)),
+      kv('Now sent / recv', current ? (fmtCount(current.sent) + ' / ' + fmtCount(current.recv)) : '0 / 0'),
+      '<div class="chip-note">Known DNS names</div><div class="pill-wrap">' + (names || '<span class="muted">No DNS alias decoded for this host</span>') + '</div>',
+      '<button class="small-button" id="filterThisHost" type="button">Filter this host</button>'
+    ].join('');
+    const btn = document.getElementById('filterThisHost');
+    if (btn) btn.onclick = () => { els.hostFilter.value = hostDisplay(host, false); applyFilters(false); };
+  }
+
+  function renderFrame(now, force = false, crossed = []) {
+    if (!state.capture) return;
+    const view = buildWindowView();
+    renderGraph(view, crossed, now);
+    renderSidePanels(view, force);
+    state.needsRender = false;
+  }
+
+  function animationLoop(now) {
+    if (!state.lastFrameAt) state.lastFrameAt = now;
+    const dt = Math.min(0.25, (now - state.lastFrameAt) / 1000);
+    state.lastFrameAt = now;
+    let crossed = [];
+    if (state.playing && state.capture) {
+      const old = state.currentTime;
+      const next = Math.min(state.duration, old + dt * state.speed);
+      state.previousTime = old;
+      state.currentTime = next;
+      els.timeline.value = String(next);
+      els.currentTime.textContent = formatDuration(next);
+      crossed = packetsBetween(old, next);
+      if (next >= state.duration) {
+        state.playing = false;
+        updatePlaybackButton();
+      }
+      state.needsRender = true;
+    }
+    if (state.capture && (state.needsRender || state.particles.length || state.playing)) renderFrame(now, false, crossed);
+    state.fpsFrames += 1;
+    if (now - state.fpsStarted > 700) {
+      els.fps.textContent = Math.round(state.fpsFrames * 1000 / (now - state.fpsStarted)) + ' fps';
+      state.fpsFrames = 0;
+      state.fpsStarted = now;
+    }
+    requestAnimationFrame(animationLoop);
+  }
+
+  function saveSvg() {
+    const clone = els.graphSvg.cloneNode(true);
+    clone.setAttribute('xmlns', SVG_NS);
+    const source = '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([source], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'pcapng-traffic-movie-' + Math.round(state.currentTime) + 's.svg';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function resetView() {
+    state.layoutKey = '';
+    state.layout.clear();
+    state.particles = [];
+    state.needsRender = true;
+  }
+
+  function wireEvents() {
+    els.fileInput.addEventListener('change', event => loadFile(event.target.files && event.target.files[0]));
+    for (const eventName of ['dragenter', 'dragover']) {
+      document.addEventListener(eventName, event => { event.preventDefault(); document.body.classList.add('dragging'); });
+    }
+    for (const eventName of ['dragleave', 'drop']) {
+      document.addEventListener(eventName, event => { event.preventDefault(); if (eventName === 'drop') loadFile(event.dataTransfer.files && event.dataTransfer.files[0]); document.body.classList.remove('dragging'); });
+    }
+    els.playPause.addEventListener('click', () => { if (!state.capture) return; state.playing = !state.playing; if (state.currentTime >= state.duration) setTime(0, true); updatePlaybackButton(); });
+    els.back10.addEventListener('click', () => setTime(state.currentTime - 10, true));
+    els.forward10.addEventListener('click', () => setTime(state.currentTime + 10, true));
+    els.backStep.addEventListener('click', () => setTime(state.currentTime - state.windowSec, true));
+    els.forwardStep.addEventListener('click', () => setTime(state.currentTime + state.windowSec, true));
+    els.prevMatch.addEventListener('click', () => jumpMatch(-1));
+    els.nextMatch.addEventListener('click', () => jumpMatch(1));
+    els.speedSelect.addEventListener('change', () => { state.speed = Number(els.speedSelect.value) || 1; });
+    els.windowSelect.addEventListener('change', () => { state.windowSec = Number(els.windowSelect.value) || 1; state.needsRender = true; });
+    els.maxNodes.addEventListener('input', () => { state.maxNodes = Number(els.maxNodes.value) || 160; els.maxNodesLabel.textContent = String(state.maxNodes); state.layoutKey = ''; state.needsRender = true; });
+    els.hostSpacing.addEventListener('input', () => { state.hostSpacing = Number(els.hostSpacing.value) || 1.25; els.hostSpacingLabel.textContent = state.hostSpacing.toFixed(2).replace(/\.00$/, '') + 'x'; state.layoutKey = ''; state.needsRender = true; });
+    els.showAll.addEventListener('change', () => { state.showAll = els.showAll.checked; state.layoutKey = ''; state.needsRender = true; });
+    els.preferDns.addEventListener('change', () => { state.preferDns = els.preferDns.checked; state.needsRender = true; renderDnsPanel(state.dns); updateFilterStatus(); });
+    els.showIpUnderName.addEventListener('change', () => { state.showIpUnderName = els.showIpUnderName.checked; state.needsRender = true; });
+    els.timeline.addEventListener('input', () => setTime(Number(els.timeline.value), true));
+    els.snapshot.addEventListener('click', saveSvg);
+    els.resetView.addEventListener('click', resetView);
+    for (const el of [els.searchText, els.hostFilter, els.srcFilter, els.dstFilter, els.portFilter]) el.addEventListener('input', () => applyFilters(true));
+    els.clearFilters.addEventListener('click', clearFilters);
+    els.hostSpacingLabel.textContent = state.hostSpacing.toFixed(2).replace(/\.00$/, '') + 'x';
+    els.protocolChips.addEventListener('click', event => {
+      const btn = event.target.closest('.chip');
+      if (!btn) return;
+      const value = btn.getAttribute('data-protocol');
+      if (!value) return;
+      if (state.selectedProtocols.has(value)) { state.selectedProtocols.delete(value); btn.classList.remove('active'); }
+      else { state.selectedProtocols.add(value); btn.classList.add('active'); }
+      applyFilters(false);
+    });
+    els.nodesLayer.addEventListener('click', event => {
+      const node = event.target.closest('.node');
+      if (!node) return;
+      const host = node.getAttribute('data-host');
+      state.selectedHost = state.selectedHost === host ? null : host;
+      state.needsRender = true;
+      renderHostPanel(state.selectedHost, state.lastView);
+    });
+    window.addEventListener('resize', () => { state.layoutKey = ''; state.needsRender = true; });
+    document.addEventListener('keydown', event => {
+      if (event.target && ['INPUT', 'TEXTAREA'].includes(event.target.tagName)) return;
+      if (event.code === 'Space') { event.preventDefault(); els.playPause.click(); }
+      else if (event.key === 'ArrowLeft') setTime(state.currentTime - (event.shiftKey ? 10 : state.windowSec), true);
+      else if (event.key === 'ArrowRight') setTime(state.currentTime + (event.shiftKey ? 10 : state.windowSec), true);
+      else if (event.key.toLowerCase() === 'n') jumpMatch(1);
+      else if (event.key.toLowerCase() === 'p') jumpMatch(-1);
+    });
+  }
+
+  wireEvents();
+  updateControlsEnabled(false);
+  state.speed = Number(els.speedSelect.value) || 30;
+  state.windowSec = Number(els.windowSelect.value) || 1;
+  state.maxNodes = Number(els.maxNodes.value) || 160;
+  els.maxNodesLabel.textContent = String(state.maxNodes);
+  drawGrid();
+  requestAnimationFrame(animationLoop);
+})();
+
+  </script>
+</body>
+</html>
