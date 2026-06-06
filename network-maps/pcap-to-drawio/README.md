@@ -9,6 +9,7 @@ This version generates a **multi-page** `.drawio` file: an Overview page + one p
 [![Input](https://img.shields.io/badge/Input-PCAP%20%7C%20PCAPNG-4CAF50)](#usage)
 
 ---
+![](https://github.com/compsecdirect/dfir/blob/main/network-maps/pcap-to-drawio/pcap-to-drawio.png)
 
 ## 🚀 What it does
 
