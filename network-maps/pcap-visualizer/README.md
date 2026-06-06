@@ -8,6 +8,7 @@ Replay packet captures as an accelerated **network traffic movie** — with pers
 [![Privacy](https://img.shields.io/badge/Privacy-Local%20Only-34D399?logo=firefoxbrowser&logoColor=white)](#privacy-and-security)
 
 ---
+![](https://github.com/compsecdirect/dfir/blob/main/network-maps/pcap-visualizer/pcap-visualizer.png)
 
 ## 🚀 What it does
 
@@ -25,6 +26,10 @@ Replay packet captures as an accelerated **network traffic movie** — with pers
 - 🔒 **Local-only parsing** in the browser; captures are not uploaded
 
 ---
+
+Demo
+![](https://github.com/compsecdirect/dfir/blob/main/network-maps/pcap-visualizer/pcap-visualizer.gif)
+
 
 ## ✨ Preview (what you’ll get)
 
