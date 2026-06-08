@@ -1,6 +1,6 @@
 # 🎞️ PCAP Visualizer
 
-Replay packet captures as an accelerated **network traffic movie** — with persistent hosts, DNS labels, searchable traffic, and an Etterape-style live SVG diagram. ✨
+Replay packet captures as an accelerated **network traffic movie** — with persistent hosts, DNS labels, searchable traffic, device-shaped nodes, zoomable navigation, themed displays, and an Etterape-style live SVG diagram. ✨
 
 [![App](https://img.shields.io/badge/App-Standalone%20HTML-38BDF8?logo=html5&logoColor=white)](#requirements)
 [![Input](https://img.shields.io/badge/Input-PCAPNG%20%2F%20PCAP-4CAF50?logo=wireshark&logoColor=white)](#supported-captures)
@@ -22,7 +22,8 @@ Replay packet captures as an accelerated **network traffic movie** — with pers
 - 🧠 **DNS, mDNS, LLMNR, and PCAPNG name-resolution labels** when available
 - 🔎 **Search and filters** for hosts, DNS names, source, destination, ports, protocols, services, and decoded packet text
 - 📊 **Current-window stats**, top flows, packet hits, protocol counts, DNS resolutions, and selected-host details
-- 🖼️ **SVG snapshot export** for documenting interesting traffic moments
+- 🖼️ **SVG and PNG snapshot export** for documenting interesting traffic moments
+- 📝 **Export Findings** to an OpenDocument Text `.odt` report with an embedded PNG, analyst label, case notes, and Devices of Interest
 - 🔒 **Local-only parsing** in the browser; captures are not uploaded
 
 ---
@@ -50,6 +51,7 @@ Demo
 - ✅ No server required
 - ✅ No install required
 - ✅ No external JavaScript libraries or package manager required
+- 🎨 Optional local Zen Dots font file placed beside the HTML for the Cyber theme
 
 > For very large captures, a browser with more available memory will perform better.
 
@@ -62,6 +64,9 @@ Download or copy the application files into a folder:
 ```text
 pcap-visualizer
 ├── pcap-visualizer.html
+├── app.js
+├── pcapng-parser-core.js
+├── template.html
 └── README.md
 ```
 
@@ -92,9 +97,10 @@ http://localhost:8000/pcap-visualizer.html
 2. Drag a `.pcapng` or `.pcap` file into the page, or click **Open capture**.
 3. Use the playback controls to replay the capture by timestamp.
 4. Adjust **Speed**, **Window**, **Max hosts**, and **Host spacing** as needed.
-5. Use DNS, host, port, and protocol filters to focus on interesting traffic.
-6. Click a host node to view host details and known DNS aliases.
-7. Use **Save SVG** to export the current network view.
+5. Use the **Theme** selector to switch between Cyber, Dark, and Light displays.
+6. Use DNS, host, port, and protocol filters to focus on interesting traffic.
+7. Click a device node to view host details, known DNS aliases, and mark Devices of Interest.
+8. Use **Save SVG**, **Save PNG**, or **Export Findings** to document the current view.
 
 ---
 
@@ -109,12 +115,16 @@ http://localhost:8000/pcap-visualizer.html
 | **Speed** | Replays the capture faster than real time |
 | **Window** | Sets how much traffic is considered active at once, such as 1, 2, 5, 10, or 30 seconds |
 | **Max hosts** | Limits the number of displayed hosts for dense captures |
-| **Host spacing** | Increases or decreases grid spacing between hosts |
+| **Host spacing** | Increases or decreases grid spacing between hosts with a larger, easier-to-use slider |
+| **Theme** | Switches between Cyber, Dark, and Light display themes |
 | **Keep discovered hosts visible** | Keeps hosts on the diagram after they first appear |
 | **Prefer DNS labels** | Shows decoded names instead of only IP addresses |
 | **Show IP under DNS label** | Displays the raw address beneath a DNS name |
-| **Reset view** | Clears transient particles and recomputes layout |
+| **Zoom / pan controls** | Zooms, pans, resets, or fits the network map inside the diagram pane |
+| **Reset view** | Clears transient particles and resets pan/zoom/layout |
 | **Save SVG** | Downloads the current diagram as an SVG snapshot |
+| **Save PNG** | Downloads the current diagram as a PNG image |
+| **Export Findings** | Creates an `.odt` report named Export Findings with a PNG network display, analyst label, case notes, filters, timestamp, and Devices of Interest |
 
 ---
 
@@ -153,6 +163,7 @@ DNS labels are derived only from capture contents. The app does not perform live
 The graph is designed for readable traffic review rather than physical network topology discovery.
 
 - Hosts are placed in a **stable grid** from left to right, top to bottom.
+- Nodes use inferred device shapes such as workstation, server, router/infrastructure, printer, cloud, multicast, broadcast, and adapter.
 - Hosts appear when first discovered in the replay timeline.
 - Previously discovered hosts remain visible when **Keep discovered hosts visible** is enabled.
 - Hosts active in the current time window are brighter.
@@ -180,6 +191,19 @@ Unsupported or malformed packets are skipped rather than stopping the entire par
 
 ---
 
+
+## 🎨 Themes and Cyber display
+
+The app includes three display themes:
+
+- **Cyber**: futuristic neon display and the default visual mode
+- **Dark**: classic low-light analyst display
+- **Light**: high-contrast bright display
+
+The Cyber theme is wired to use a local **Zen Dots** font file when present beside `pcap-visualizer.html`. The project package does not redistribute font files; place your licensed font file in the same folder using the filename referenced in the CSS if you want the exact Cyber typography.
+
+Menu items, filters, playback options, and export controls include hover tooltips by default.
+
 ## 🧷 Host details and tooltips
 
 Click a host node to show:
@@ -187,19 +211,29 @@ Click a host node to show:
 - Display label
 - Raw address
 - Host class
+- Inferred device type
+- Device of Interest finding status
 - Current-window packet count
 - Total packet count
 - Total byte count
 - Known DNS aliases
 - One-click host filtering
+- One-click marking or removal as a Device of Interest
 
 Hover over edges and nodes to see packet and flow summaries.
 
 ---
 
-## 🖼️ Exporting
+## 🖼️ Exporting and Findings
 
-Use **Save SVG** to export the current network diagram.
+Use **Save SVG** or **Save PNG** to export the current network diagram. Use **Export Findings** to create an OpenDocument Text `.odt` report that contains:
+
+- A PNG image of the current network display
+- Finding label entered by the analyst
+- Case notes entered by the analyst
+- Current capture timestamp and playback window
+- Active filters
+- Devices marked as **Devices of Interest in Findings**
 
 This is useful for:
 
@@ -207,6 +241,7 @@ This is useful for:
 - Timeline reports
 - Screenshots without browser UI
 - Sharing a specific capture moment with teammates
+- Case documentation and repeatable finding exports
 
 ---
 
@@ -285,7 +320,7 @@ Internally it uses:
 
 Ideas for future improvements:
 
-- 🔍 Zoom and pan controls
+- ✅ Zoom and pan controls
 - 📦 Subnet grouping or collapsible host groups
 - 📌 Pinning important hosts
 - 🚦 Separate lanes for internal, external, multicast, and broadcast hosts

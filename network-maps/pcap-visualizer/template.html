@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PCAPNG Traffic Movie v2 - DNS + Search</title>
+  <title>PCAP Visualizer - By CompSec Direct</title>
   <style>
     :root {
       color-scheme: dark;
@@ -173,37 +173,296 @@
       .filter-grid { grid-template-columns: 1fr 1fr 1fr; }
       .filter-actions { flex-direction: row; grid-column: span 3; }
     }
+
+
+    /* Theme and responsive UI overrides */
+    @font-face {
+      font-family: "Zen Dots Local";
+      src: url("./b8654ac0-0dd7-4b1c-aec4-9cd2fc6c47dc.ttf") format("truetype");
+      font-display: swap;
+    }
+    :root {
+      --control-h: 38px;
+      --sidebar-w: clamp(300px, 28vw, 430px);
+      --export-bg: #08111f;
+      --device-stroke: rgba(248, 250, 252, 0.92);
+      --node-label-stroke: rgba(2,6,23,0.78);
+    }
+    body[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #08111f;
+      --panel: rgba(15, 23, 42, 0.90);
+      --panel-strong: rgba(15, 23, 42, 0.98);
+      --muted: #94a3b8;
+      --text: #e2e8f0;
+      --line: rgba(148, 163, 184, 0.18);
+      --accent: #38bdf8;
+      --accent2: #a78bfa;
+      --export-bg: #08111f;
+      --node-label-stroke: rgba(2,6,23,0.78);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f8fafc;
+      --panel: rgba(255,255,255,0.94);
+      --panel-strong: rgba(255,255,255,0.98);
+      --muted: #475569;
+      --text: #0f172a;
+      --line: rgba(15, 23, 42, 0.16);
+      --accent: #0284c7;
+      --accent2: #7c3aed;
+      --ok: #059669;
+      --warn: #d97706;
+      --danger: #e11d48;
+      --other: #334155;
+      --export-bg: #f8fafc;
+      --device-stroke: rgba(15, 23, 42, 0.84);
+      --node-label-stroke: rgba(255,255,255,0.85);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body[data-theme="cyber"] {
+      color-scheme: dark;
+      --bg: #030712;
+      --panel: rgba(4, 12, 22, 0.88);
+      --panel-strong: rgba(3, 7, 18, 0.98);
+      --muted: #79f2ff;
+      --text: #e8fff8;
+      --line: rgba(57, 255, 220, 0.22);
+      --accent: #00f5ff;
+      --accent2: #ff2bd6;
+      --ok: #39ff88;
+      --warn: #ffd166;
+      --danger: #ff3b6b;
+      --remote: #00b7ff;
+      --local: #39ff88;
+      --mac: #ffd166;
+      --multicast: #ff2bd6;
+      --broadcast: #ff3b6b;
+      --tcp: #00f5ff;
+      --udp: #b56cff;
+      --arp: #ffd166;
+      --icmp: #ff3b6b;
+      --other: #d7fff7;
+      --export-bg: #030712;
+      font-family: "Zen Dots Local", "Zen Dots", Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    body[data-theme="light"] html, body[data-theme="light"] {
+      background: radial-gradient(circle at 12% 5%, rgba(2,132,199,0.12), transparent 28%), radial-gradient(circle at 90% 12%, rgba(124,58,237,0.10), transparent 24%), var(--bg);
+    }
+    body[data-theme="cyber"] {
+      background:
+        linear-gradient(rgba(0,245,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,245,255,0.035) 1px, transparent 1px),
+        radial-gradient(circle at 12% 5%, rgba(0,245,255,0.22), transparent 28%),
+        radial-gradient(circle at 90% 12%, rgba(255,43,214,0.18), transparent 24%),
+        var(--bg);
+      background-size: 34px 34px, 34px 34px, auto, auto, auto;
+    }
+    body[data-theme="cyber"] header,
+    body[data-theme="cyber"] footer,
+    body[data-theme="cyber"] .controls,
+    body[data-theme="cyber"] .filters,
+    body[data-theme="cyber"] .panel,
+    body[data-theme="cyber"] .modal-card {
+      box-shadow: 0 0 0 1px rgba(0,245,255,0.08), 0 0 28px rgba(0,245,255,0.06);
+    }
+    body[data-theme="cyber"] .brand h1,
+    body[data-theme="cyber"] .panel h3 {
+      text-shadow: 0 0 12px rgba(0,245,255,0.55);
+    }
+    body[data-theme="light"] button,
+    body[data-theme="light"] .file-button,
+    body[data-theme="light"] select,
+    body[data-theme="light"] input[type="text"],
+    body[data-theme="light"] input[type="search"],
+    body[data-theme="light"] textarea {
+      background: rgba(255,255,255,0.92);
+      color: var(--text);
+      border-color: rgba(15,23,42,0.18);
+    }
+
+    .app { min-width: 0; grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+    header { flex-wrap: wrap; padding: clamp(10px, 1.4vw, 18px); }
+    .brand { flex: 1 1 320px; min-width: min(320px, 100%); }
+    .file-actions { flex: 1 1 360px; justify-content: flex-end; flex-wrap: wrap; }
+    .file-name { max-width: min(52vw, 620px); }
+    button, .file-button, select, input[type="number"], input[type="text"], input[type="search"], textarea {
+      min-height: var(--control-h);
+      line-height: 1.15;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 12px;
+      align-items: center;
+      padding: 10px clamp(10px, 1.5vw, 18px);
+    }
+    .control-group {
+      min-height: 42px;
+      padding: 4px 6px;
+      border-radius: 12px;
+      background: rgba(15,23,42,0.26);
+      border: 1px solid rgba(148,163,184,0.10);
+    }
+    .control-group label { white-space: nowrap; }
+    .control-group.range-control { flex: 1 1 260px; min-width: min(320px, 100%); }
+    .control-group.range-control input[type="range"] { min-width: 190px; height: 28px; }
+    .timeline-wrap { flex: 999 1 420px; min-width: min(420px, 100%); }
+    .filters { padding: 10px clamp(10px, 1.5vw, 18px); }
+    .filter-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+    .filter-grid .field:nth-child(1) { grid-column: span 3; }
+    .filter-grid .field:nth-child(2) { grid-column: span 2; }
+    .filter-grid .field:nth-child(3), .filter-grid .field:nth-child(4), .filter-grid .field:nth-child(5) { grid-column: span 1; }
+    .filter-grid .field:nth-child(6) { grid-column: span 3; }
+    .filter-actions { grid-column: span 1; }
+    main { grid-template-columns: minmax(0, 1fr) var(--sidebar-w); min-height: 0; }
+    aside { width: 100%; }
+    .graph-shell { isolation: isolate; touch-action: none; }
+    .graph-toolbar {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 8;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(34px, auto));
+      gap: 6px;
+      padding: 8px;
+      border-radius: 14px;
+      background: rgba(2, 6, 23, 0.72);
+      border: 1px solid rgba(148,163,184,0.22);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.32);
+    }
+    .graph-toolbar .wide { grid-column: span 3; }
+    .graph-toolbar button { min-width: 36px; padding: 8px 9px; font-weight: 750; }
+    .graph-hint {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      z-index: 7;
+      color: var(--muted);
+      background: rgba(2,6,23,0.60);
+      border: 1px solid rgba(148,163,184,0.18);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 11px;
+      pointer-events: none;
+      backdrop-filter: blur(12px);
+    }
+    .node .node-shape {
+      stroke-width: 1.8;
+      filter: drop-shadow(0 6px 12px rgba(0,0,0,0.35));
+      vector-effect: non-scaling-stroke;
+    }
+    .node.local .node-shape { fill: rgba(52, 211, 153, 0.92); stroke: #bbf7d0; }
+    .node.remote .node-shape { fill: rgba(96, 165, 250, 0.88); stroke: #bfdbfe; }
+    .node.mac .node-shape { fill: rgba(251, 191, 36, 0.88); stroke: #fde68a; }
+    .node.multicast .node-shape { fill: rgba(244, 114, 182, 0.88); stroke: #fbcfe8; }
+    .node.broadcast .node-shape { fill: rgba(251, 113, 133, 0.9); stroke: #fecdd3; }
+    .node.device-server .node-shape { fill: rgba(56,189,248,0.85); }
+    .node.device-router .node-shape { fill: rgba(167,139,250,0.86); }
+    .node.device-printer .node-shape { fill: rgba(251,191,36,0.90); }
+    .node.device-workstation .node-shape { fill: rgba(52,211,153,0.86); }
+    .node.device-cloud .node-shape { fill: rgba(96,165,250,0.76); }
+    .node.device-interest .node-shape { stroke: var(--warn) !important; stroke-width: 3 !important; }
+    .node.inactive .node-shape, .node.inactive .device-detail { opacity: 0.34; }
+    .node text { stroke: var(--node-label-stroke); }
+    .device-detail { fill: rgba(2,6,23,0.34); stroke: rgba(248,250,252,0.62); stroke-width: 1; pointer-events: none; vector-effect: non-scaling-stroke; }
+    .interest-star { fill: var(--warn); stroke: rgba(2,6,23,0.78); stroke-width: 1.5; pointer-events: none; }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(2, 6, 23, 0.72);
+      backdrop-filter: blur(12px);
+    }
+    .modal-card {
+      width: min(760px, 96vw);
+      max-height: min(86vh, 760px);
+      overflow: auto;
+      border-radius: 22px;
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+      box-shadow: 0 24px 90px rgba(0,0,0,0.48);
+      padding: 18px;
+    }
+    .modal-card h2 { margin: 0 0 6px; font-size: 20px; }
+    .modal-card p { color: var(--muted); margin: 0 0 14px; line-height: 1.45; }
+    .modal-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .modal-grid label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+    .modal-grid input, .modal-grid textarea { width: 100%; border-radius: 12px; padding: 10px 12px; }
+    .modal-grid textarea { min-height: 132px; resize: vertical; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
+    .device-interest-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px; padding: 8px; border: 1px solid rgba(148,163,184,0.16); border-radius: 12px; background: rgba(15,23,42,0.35); }
+    .device-interest-list .pill { max-width: 100%; }
+
+    @media (max-width: 1180px) {
+      .filter-grid .field:nth-child(1), .filter-grid .field:nth-child(2), .filter-grid .field:nth-child(6) { grid-column: span 6; }
+      .filter-grid .field:nth-child(3), .filter-grid .field:nth-child(4), .filter-grid .field:nth-child(5) { grid-column: span 4; }
+      .filter-actions { grid-column: span 12; flex-direction: row; flex-wrap: wrap; }
+    }
+    @media (max-width: 900px) {
+      html, body { overflow: auto; }
+      .app { min-height: 100vh; height: auto; }
+      main { grid-template-columns: 1fr; grid-template-rows: minmax(58vh, 1fr) auto; }
+      aside { max-height: 44vh; border-left: 0; border-top: 1px solid var(--line); }
+      .filter-grid { grid-template-columns: 1fr 1fr; }
+      .filter-grid .field, .filter-grid .field:nth-child(n), .filter-actions { grid-column: span 2; }
+      .timeline-wrap { order: 10; flex-basis: 100%; }
+      .graph-toolbar { grid-template-columns: repeat(3, 34px); right: 8px; top: 8px; }
+    }
+    @media (max-width: 560px) {
+      header, .file-actions { justify-content: stretch; }
+      .file-actions > * { flex: 1 1 auto; }
+      .control-group { flex: 1 1 100%; justify-content: space-between; }
+      .control-group button { flex: 1 1 auto; }
+      .timeline-wrap { grid-template-columns: 78px 1fr 78px; }
+      .filter-status { flex-direction: column; align-items: flex-start; }
+    }
+
   </style>
 </head>
-<body>
+<body data-theme="cyber">
   <div class="app">
     <header>
       <div class="brand">
-        <h1>PCAPNG Traffic Movie v2</h1>
-        <p>Accelerated flow playback with DNS labels, host/port/protocol filters, and searchable packets</p>
+        <h1>PCAP Visualizer - By CompSec Direct</h1>
+        <p>Accelerated flow playback with persistent hosts, DNS labels, host/port/protocol filters, and searchable packets</p>
       </div>
       <div class="file-actions">
-        <span id="fileName" class="file-name">No capture loaded</span>
-        <label for="fileInput" class="file-button">Open capture</label>
+        <label class="control-group" title="Choose the display theme for the interface and exported findings.">
+          <span class="muted">Theme</span>
+          <select id="themeSelect" title="Display theme: Cyber, Dark, or Light">
+            <option value="cyber" selected>Cyber</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+        <span id="fileName" class="file-name" title="Currently loaded capture file">No capture loaded</span>
+        <label for="fileInput" class="file-button" title="Open a .pcapng or .pcap capture from local disk">Open capture</label>
         <input id="fileInput" type="file" accept=".pcapng,.pcap,application/octet-stream" />
       </div>
     </header>
 
-    <section class="controls">
-      <button id="playPause" class="primary" disabled>Play</button>
-      <div class="control-group">
+    <section class="controls" aria-label="Playback and display controls">
+      <button id="playPause" class="primary" disabled title="Play or pause timestamp-based packet replay. Shortcut: Space">Play</button>
+      <div class="control-group" title="Move through the capture timeline.">
         <button id="back10" disabled title="Rewind 10 seconds">-10s</button>
-        <button id="backStep" disabled title="Previous active window">-1 window</button>
-        <button id="forwardStep" disabled title="Next active window">+1 window</button>
+        <button id="backStep" disabled title="Previous active traffic window">-1 window</button>
+        <button id="forwardStep" disabled title="Next active traffic window">+1 window</button>
         <button id="forward10" disabled title="Fast forward 10 seconds">+10s</button>
       </div>
-      <div class="control-group">
-        <button id="prevMatch" disabled title="Jump to previous matching packet">Prev match</button>
-        <button id="nextMatch" disabled title="Jump to next matching packet">Next match</button>
+      <div class="control-group" title="Jump to packets that match the active host, port, protocol, or text filters.">
+        <button id="prevMatch" disabled title="Jump to previous matching packet. Shortcut: P">Prev match</button>
+        <button id="nextMatch" disabled title="Jump to next matching packet. Shortcut: N">Next match</button>
       </div>
-      <div class="control-group">
+      <div class="control-group" title="Replay speed multiplier relative to capture time.">
         <label for="speedSelect">Speed</label>
-        <select id="speedSelect">
+        <select id="speedSelect" title="Replay speed multiplier">
           <option value="1">1x</option>
           <option value="5">5x</option>
           <option value="10">10x</option>
@@ -215,9 +474,9 @@
           <option value="1200">1200x</option>
         </select>
       </div>
-      <div class="control-group">
+      <div class="control-group" title="How much capture time is treated as active in each frame.">
         <label for="windowSelect">Window</label>
-        <select id="windowSelect">
+        <select id="windowSelect" title="Active traffic window size">
           <option value="1" selected>1 sec</option>
           <option value="2">2 sec</option>
           <option value="5">5 sec</option>
@@ -225,52 +484,59 @@
           <option value="30">30 sec</option>
         </select>
       </div>
-      <div class="control-group optional">
+      <div class="control-group range-control" title="Limit the number of hosts shown at once for dense captures.">
         <label for="maxNodes">Max hosts</label>
-        <input id="maxNodes" type="range" min="30" max="500" value="160" step="10" />
+        <input id="maxNodes" type="range" min="30" max="500" value="160" step="10" title="Maximum hosts to draw" />
         <span id="maxNodesLabel" class="time-label">160</span>
       </div>
-      <label class="toggle optional"><input id="showAll" type="checkbox" /> include discovered hosts</label>
-      <div class="timeline-wrap">
+      <div class="control-group range-control" title="Increase spacing between host shapes. Useful for crowded diagrams.">
+        <label for="hostSpacing">Host spacing</label>
+        <input id="hostSpacing" type="range" min="0.8" max="3.0" value="1.45" step="0.05" title="Spacing multiplier between host devices" />
+        <span id="hostSpacingLabel" class="time-label">1.45x</span>
+      </div>
+      <label class="toggle optional" title="Keep hosts visible after they first appear in the capture"><input id="showAll" type="checkbox" checked /> keep discovered hosts visible</label>
+      <div class="timeline-wrap" title="Scrub to any timestamp in the capture">
         <span id="currentTime" class="time-label">00:00.000</span>
-        <input id="timeline" type="range" min="0" max="0" value="0" step="0.001" disabled />
+        <input id="timeline" type="range" min="0" max="0" value="0" step="0.001" disabled title="Capture timeline scrubber" />
         <span id="durationTime" class="time-label">00:00.000</span>
       </div>
-      <button id="snapshot" class="ghost" disabled>Save SVG</button>
-      <button id="resetView" class="ghost" disabled>Reset view</button>
-      <span id="fps" class="time-label">0 fps</span>
+      <button id="snapshot" class="ghost" disabled title="Download the current network view as an SVG">Save SVG</button>
+      <button id="savePng" class="ghost" disabled title="Download the current network view as a PNG image">Save PNG</button>
+      <button id="exportFindings" class="ghost" disabled title="Create an OpenDocument Text finding report with the current PNG network display, label, notes, and devices of interest">Export Findings</button>
+      <button id="resetView" class="ghost" disabled title="Reset particles, pan, zoom, and recompute layout">Reset view</button>
+      <span id="fps" class="time-label" title="Rendering frames per second">0 fps</span>
     </section>
 
     <section class="filters">
       <div class="filter-grid">
         <div class="field">
           <label for="searchText">Search decoded fields</label>
-          <input id="searchText" type="search" placeholder="domain, IP, SYN, DNS answer, flow detail" disabled />
+          <input id="searchText" type="search" placeholder="domain, IP, SYN, DNS answer, flow detail" disabled title="Search decoded packet details, DNS data, and flow text" />
         </div>
         <div class="field">
           <label for="hostFilter">Any host / DNS name</label>
-          <input id="hostFilter" type="text" placeholder="google, 10.10.10.4, .local" disabled />
+          <input id="hostFilter" type="text" placeholder="google, 10.10.10.4, .local" disabled title="Match source or destination host by IP address or decoded name" />
         </div>
         <div class="field">
           <label for="srcFilter">Source host</label>
-          <input id="srcFilter" type="text" placeholder="source name or IP" disabled />
+          <input id="srcFilter" type="text" placeholder="source name or IP" disabled title="Filter packets by source host" />
         </div>
         <div class="field">
           <label for="dstFilter">Destination host</label>
-          <input id="dstFilter" type="text" placeholder="destination name or IP" disabled />
+          <input id="dstFilter" type="text" placeholder="destination name or IP" disabled title="Filter packets by destination host" />
         </div>
         <div class="field">
           <label for="portFilter">Ports</label>
-          <input id="portFilter" type="text" placeholder="53,443,8000-9000" disabled />
+          <input id="portFilter" type="text" placeholder="53,443,8000-9000" disabled title="Filter by ports. Supports single ports, comma lists, and ranges" />
         </div>
         <div class="field">
           <label>Protocols / services</label>
           <div id="protocolChips" class="chip-box"><span class="muted">Protocols appear after a capture is loaded.</span></div>
         </div>
         <div class="filter-actions">
-          <button id="clearFilters" class="ghost" disabled>Clear filters</button>
-          <label class="toggle"><input id="preferDns" type="checkbox" checked disabled /> DNS labels</label>
-          <label class="toggle"><input id="showIpUnderName" type="checkbox" checked disabled /> show IP</label>
+          <button id="clearFilters" class="ghost" disabled title="Clear all filters and selected protocol chips">Clear filters</button>
+          <label class="toggle" title="Prefer decoded DNS/mDNS/LLMNR names over raw addresses"><input id="preferDns" type="checkbox" checked disabled /> DNS labels</label>
+          <label class="toggle" title="Show raw IP address below DNS labels"><input id="showIpUnderName" type="checkbox" checked disabled /> show IP</label>
         </div>
       </div>
       <div class="filter-status">
@@ -292,6 +558,17 @@
           <g id="particlesLayer"></g>
           <g id="nodesLayer"></g>
         </svg>
+        <div class="graph-toolbar" aria-label="Network map navigation controls">
+          <button id="zoomIn" type="button" title="Zoom in">+</button>
+          <button id="zoomOut" type="button" title="Zoom out">-</button>
+          <button id="zoomReset" type="button" title="Reset zoom and pan">1:1</button>
+          <button id="panUp" type="button" title="Pan up">↑</button>
+          <button id="panLeft" type="button" title="Pan left">←</button>
+          <button id="panRight" type="button" title="Pan right">→</button>
+          <button id="panDown" type="button" title="Pan down">↓</button>
+          <button id="zoomFit" type="button" class="wide" title="Fit all visible devices in the map">Fit view</button>
+        </div>
+        <div class="graph-hint">Wheel to zoom • drag empty map to pan • click a device for details</div>
         <div id="emptyOverlay" class="overlay-empty">
           <h2>Open a capture to start the movie</h2>
           <p>Drop a <strong>.pcapng</strong> or <strong>.pcap</strong> file here. Parsing, DNS extraction, and filtering all happen locally in your browser.</p>
@@ -367,8 +644,32 @@
       </aside>
     </main>
 
+
+
+    <div id="findingsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="findingsTitle">
+      <form id="findingsForm" class="modal-card">
+        <h2 id="findingsTitle">Export Findings</h2>
+        <p>Create an OpenDocument Text report containing a PNG of the current network display, analyst label, notes, timestamp, active filters, and marked Devices of Interest.</p>
+        <div class="modal-grid">
+          <label>Finding label
+            <input id="findingLabel" type="text" maxlength="120" placeholder="Suspicious DNS beaconing, lateral movement, unusual external service..." required />
+          </label>
+          <label>Case notes
+            <textarea id="findingNotes" placeholder="Explain why this network view is relevant, what traffic is shown, and what an analyst should review next."></textarea>
+          </label>
+          <label>Devices of Interest in Findings
+            <div id="devicesOfInterestList" class="device-interest-list"><span class="muted">No devices marked yet. Select a device and choose Mark Device of Interest.</span></div>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button id="cancelFindings" type="button" class="ghost">Cancel</button>
+          <button type="submit" class="primary">Export Findings</button>
+        </div>
+      </form>
+    </div>
+
     <footer>
-      <div id="status" class="status">Ready. Supports DNS/mDNS/LLMNR extraction, PCAPNG name-resolution blocks, and host/port/protocol filters.</div>
+      <div id="status" class="status">Ready. Supports persistent host placement, DNS/mDNS/LLMNR extraction, PCAPNG name-resolution blocks, and host/port/protocol filters.</div>
       <div>Local-only single-file app</div>
     </footer>
   </div>
