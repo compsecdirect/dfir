@@ -1,46 +1,43 @@
-# 🎞️ PCAP Visualizer
+# 🎞️ PCAP Visualizer — CompSec Direct
 
-Replay packet captures as an accelerated **network traffic movie** — with persistent hosts, DNS labels, searchable traffic, device-shaped nodes, zoomable navigation, themed displays, and an Etterape-style live SVG diagram. ✨
+Replay packet captures as an accelerated **network traffic movie** with persistent hosts, DNS labels, device-shaped nodes, analyst findings, report exports, and multiple network-map layouts. ✨
 
 [![App](https://img.shields.io/badge/App-Standalone%20HTML-38BDF8?logo=html5&logoColor=white)](#requirements)
 [![Input](https://img.shields.io/badge/Input-PCAPNG%20%2F%20PCAP-4CAF50?logo=wireshark&logoColor=white)](#supported-captures)
-[![Visualization](https://img.shields.io/badge/View-Animated%20SVG-A78BFA?logo=svg&logoColor=white)](#visualization-model)
-[![Privacy](https://img.shields.io/badge/Privacy-Local%20Only-34D399?logo=firefoxbrowser&logoColor=white)](#privacy-and-security)
+[![Reports](https://img.shields.io/badge/Export-DOCX%20Findings-A78BFA?logo=libreoffice&logoColor=white)](#findings-and-reporting)
+[![Privacy](https://img.shields.io/badge/Privacy-Local%20First-34D399?logo=firefoxbrowser&logoColor=white)](#privacy-and-security)
 
 ---
-![](https://github.com/compsecdirect/dfir/blob/main/network-maps/pcap-visualizer/pcap-visualizer.png)
 
 ## 🚀 What it does
 
 ✅ Turns packet capture files into an interactive live network replay with:
 
-- 🕸️ **Persistent host graph** where hosts remain visible after they first appear
-- 📐 **Left-to-right, top-to-bottom layout** to avoid the bouncing force-graph effect
-- ↔️ **Adjustable host spacing** to reduce clutter on dense captures
-- 🧭 **Play, pause, rewind, fast-forward, scrub, and speed controls**
-- ✨ **Animated packet transitions** between communicating hosts
+- 🕸️ **Persistent network maps** where hosts remain visible after discovery
+- 🎯 **Finding Focus view** that centers a selected or marked findings host
+- 📡 **Communication-weighted rings** where strongest peers are closest to the focus host and weaker peers are farther away
+- 🧭 **Logical Groups view** that separates local devices from remote host groups by DNS domain or IP network prefix
+- 📐 **Grid view** for stable left-to-right, top-to-bottom review
+- 🔎 **Search and filters** for decoded text, hosts, DNS names, source, destination, ports, protocols, and services
 - 🧠 **DNS, mDNS, LLMNR, and PCAPNG name-resolution labels** when available
-- 🔎 **Search and filters** for hosts, DNS names, source, destination, ports, protocols, services, and decoded packet text
-- 📊 **Current-window stats**, top flows, packet hits, protocol counts, DNS resolutions, and selected-host details
-- 🖼️ **SVG and PNG snapshot export** for documenting interesting traffic moments
-- 📝 **Export Findings** to an OpenDocument Text `.odt` report with an embedded PNG, analyst label, case notes, and Devices of Interest
-- 🔒 **Local-only parsing** in the browser; captures are not uploaded
+- 🧩 **Device-shaped SVG nodes** inferred from local/remote role, DNS names, services, and observed ports
+- 🖱️ **Drag-and-pin device placement** that stays fixed while the PCAP plays, pauses, rewinds, or fast-forwards
+- 🚫 **Map exclusions** for hosts, IPs, MACs, and DNS names using pasted CSV/TSV/text lists or imported files
+- ⭐ **Devices of Interest** for analyst triage and reporting
+- 📝 **Queued Findings workflow** with Word-compatible `.docx` export
+- 🖼️ **SVG and PNG snapshot export**
 
 ---
 
-Demo
-![](https://github.com/compsecdirect/dfir/blob/main/network-maps/pcap-visualizer/pcap-visualizer.gif)
+## ✨ Network map views
 
+| View | What it is for |
+| ---- | -------------- |
+| **Timeline Grid** | Stable review of the active playback window with persistent hosts. |
+| **Finding Focus** | Centers the selected or marked host. Hosts that communicated with it the most are placed closest; lower-volume peers move outward. |
+| **Logical Groups** | Organizes local devices separately from remote groups. Remote hosts are grouped by DNS domain when known or by IP network prefix when names are unavailable. |
 
-## ✨ Preview (what you’ll get)
-
-- 🔷 Hosts arranged in a stable grid instead of bouncing around
-- 🟢 Active hosts highlighted for the current playback window
-- ⚪ Inactive-but-discovered hosts retained on the diagram
-- ➡️ Directed traffic edges showing who is talking to whom
-- ✨ Moving particles showing packet transitions as the capture plays
-- 🏷️ DNS labels shown above IP addresses when names are decoded
-- 🔍 Filtered packet hit table for traffic of interest
+Use the **View** selector near the playback controls. Use **Focus host** to choose a findings host directly, or select a node and click **Mark Device of Interest**.
 
 ---
 
@@ -48,9 +45,8 @@ Demo
 
 - 🌐 A modern desktop browser: Chrome, Edge, Firefox, Safari, or equivalent
 - 📁 A `.pcapng` or classic `.pcap` file
-- ✅ No server required
-- ✅ No install required
-- ✅ No external JavaScript libraries or package manager required
+- ✅ No server required for normal use
+- ✅ No package manager required
 - 🎨 Optional local Zen Dots font file placed beside the HTML for the Cyber theme
 
 > For very large captures, a browser with more available memory will perform better.
@@ -96,11 +92,11 @@ http://localhost:8000/pcap-visualizer.html
 1. Open `pcap-visualizer.html`.
 2. Drag a `.pcapng` or `.pcap` file into the page, or click **Open capture**.
 3. Use the playback controls to replay the capture by timestamp.
-4. Adjust **Speed**, **Window**, **Max hosts**, and **Host spacing** as needed.
-5. Use the **Theme** selector to switch between Cyber, Dark, and Light displays.
-6. Use DNS, host, port, and protocol filters to focus on interesting traffic.
-7. Click a device node to view host details, known DNS aliases, and mark Devices of Interest.
-8. Use **Save SVG**, **Save PNG**, or **Export Findings** to document the current view.
+4. Pick a network map view: **Timeline Grid**, **Finding Focus**, or **Logical Groups**.
+5. Select an interesting host and click **Mark Device of Interest** near the top center.
+6. Click **Add Finding** to queue the current timestamp, map image, label, notes, filters, focus host, and Devices of Interest.
+7. Repeat for each finding.
+8. Click **Final Export Report** to build one CompSec Direct branded `.docx` report from all queued findings.
 
 ---
 
@@ -108,23 +104,24 @@ http://localhost:8000/pcap-visualizer.html
 
 | Control | What it does |
 | ------- | ------------ |
-| **Play / Pause** | Starts or pauses timestamp-based replay |
-| **-10s / +10s** | Jumps backward or forward ten seconds |
-| **-1 window / +1 window** | Moves by the currently selected active traffic window |
-| **Timeline scrubber** | Seeks to any point in the capture |
-| **Speed** | Replays the capture faster than real time |
-| **Window** | Sets how much traffic is considered active at once, such as 1, 2, 5, 10, or 30 seconds |
-| **Max hosts** | Limits the number of displayed hosts for dense captures |
-| **Host spacing** | Increases or decreases grid spacing between hosts with a larger, easier-to-use slider |
-| **Theme** | Switches between Cyber, Dark, and Light display themes |
-| **Keep discovered hosts visible** | Keeps hosts on the diagram after they first appear |
-| **Prefer DNS labels** | Shows decoded names instead of only IP addresses |
-| **Show IP under DNS label** | Displays the raw address beneath a DNS name |
-| **Zoom / pan controls** | Zooms, pans, resets, or fits the network map inside the diagram pane |
-| **Reset view** | Clears transient particles and resets pan/zoom/layout |
-| **Save SVG** | Downloads the current diagram as an SVG snapshot |
-| **Save PNG** | Downloads the current diagram as a PNG image |
-| **Export Findings** | Creates an `.odt` report named Export Findings with a PNG network display, analyst label, case notes, filters, timestamp, and Devices of Interest |
+| **Play / Pause** | Starts or pauses timestamp-based replay. |
+| **-10s / +10s** | Jumps backward or forward ten seconds. |
+| **-1 window / +1 window** | Moves by the currently selected active traffic window. |
+| **Timeline scrubber** | Seeks to any point in the capture. |
+| **Speed** | Replays the capture faster than real time. |
+| **Window** | Sets how much traffic is considered active at once. |
+| **View** | Switches between grid, finding-focus, and logical-group map layouts. |
+| **Focus host** | Selects the host to center in Finding Focus view. |
+| **Max hosts** | Limits displayed hosts for dense captures. |
+| **Host spacing** | Increases or decreases map spacing. |
+| **Theme** | Switches between Cyber, Dark, and Light displays. |
+| **Mark Device of Interest** | Marks or unmarks the selected/focused host for findings and final reports. |
+| **Exclude Selected** | Hides the selected/focused host from the map without modifying the capture. |
+| **Add Finding** | Queues the current view and timestamp as a finding entry. |
+| **Final Export Report** | Builds the aggregated Word-compatible findings report. |
+| **Save SVG / Save PNG** | Downloads the current map snapshot. |
+| **Zoom / pan controls** | Zooms, pans, resets, or fits the network map. |
+| **Reset device positions** | Clears manually dragged device locations. |
 
 ---
 
@@ -134,16 +131,63 @@ Use the filter panel to search the capture without leaving the visualization.
 
 | Filter | Examples | Notes |
 | ------ | -------- | ----- |
-| **Any decoded text** | `google`, `NXDOMAIN`, `TLS`, `query` | Searches decoded packet details and flow text |
-| **Any host / DNS name** | `10.10.10.4`, `.local`, `printer`, `googleapis` | Matches source or destination host data |
-| **Source host** | `192.168.1.10`, `workstation` | Matches only packet sources |
-| **Destination host** | `8.8.8.8`, `api.example.com` | Matches only packet destinations |
-| **Ports** | `53`, `80,443`, `8000-9000` | Supports single ports, comma-separated lists, and ranges |
-| **Protocol / service chips** | `TCP`, `UDP`, `DNS`, `MDNS`, `LLMNR`, `HTTPS`, `QUIC` | Click chips to quickly narrow the replay |
+| **Any decoded text** | `google`, `NXDOMAIN`, `TLS`, `query` | Searches decoded packet details and flow text. |
+| **Any host / DNS name** | `10.10.10.4`, `.local`, `printer`, `googleapis` | Matches source or destination host data. |
+| **Source host** | `192.168.1.10`, `workstation` | Matches only packet sources. |
+| **Destination host** | `8.8.8.8`, `api.example.com` | Matches only packet destinations. |
+| **Ports** | `53`, `80,443`, `8000-9000` | Supports single ports, comma-separated lists, and ranges. |
+| **Protocol / service chips** | `TCP`, `UDP`, `DNS`, `MDNS`, `LLMNR`, `HTTPS`, `QUIC` | Click chips to quickly narrow the replay. |
 
 Use **Previous match** and **Next match** to jump through matching traffic.
 
 ---
+
+## 🚫 Map exclusions and cleanup
+
+Use **Exclude Selected** to remove a selected device icon from the network map. Use **Network map exclusions** to paste or import host lists.
+
+Accepted input styles include:
+
+```text
+10.10.10.4
+printer.local
+8.8.8.8, dns.google
+00:11:22:33:44:55	workstation.local
+```
+
+The parser extracts likely IP addresses, IPv6 addresses, MAC addresses, and DNS-style names from CSV, TSV, copied spreadsheet lists, or plain text. Unrelated words are ignored. Exclusions affect only the visualization and reports; the original capture is not changed.
+
+---
+
+## ⭐ Devices of Interest
+
+A selected host can be marked as a **Device of Interest** from the top-center action bar or the host detail panel.
+
+Marked devices are:
+
+- Highlighted on the map
+- Included in the focus-host selector
+- Included in queued findings
+- Included in the final CompSec Direct report
+
+---
+
+## 📝 Findings and reporting
+
+The findings workflow is intentionally cumulative:
+
+1. Navigate to an interesting timestamp and map view.
+2. Mark Devices of Interest.
+3. Click **Add Finding**.
+4. Enter a label and case notes.
+5. The current timestamp, absolute capture time, view mode, focus host, filters, map PNG, notes, and Devices of Interest are added to the findings queue.
+6. Repeat as needed.
+7. Click **Final Export Report** to generate a single Word-compatible `.docx` report.
+
+The final report includes **CompSec Direct** branding, all queued findings, all finding screenshots, case notes, timestamps, view modes, filters, and Devices of Interest.
+
+---
+
 
 ## 🧠 DNS resolution
 
@@ -154,190 +198,43 @@ The app can label hosts using names found inside the capture, including:
 - 🧭 LLMNR traffic
 - 📚 PCAPNG Name Resolution Blocks
 
-DNS labels are derived only from capture contents. The app does not perform live reverse DNS lookups and does not send IP addresses to outside services.
+DNS labels are derived from capture contents. The app does not perform live reverse DNS, WHOIS, GeoIP, or enrichment lookups.
 
 ---
 
-## 🧭 Visualization model
-
-The graph is designed for readable traffic review rather than physical network topology discovery.
-
-- Hosts are placed in a **stable grid** from left to right, top to bottom.
-- Nodes use inferred device shapes such as workstation, server, router/infrastructure, printer, cloud, multicast, broadcast, and adapter.
-- Hosts appear when first discovered in the replay timeline.
-- Previously discovered hosts remain visible when **Keep discovered hosts visible** is enabled.
-- Hosts active in the current time window are brighter.
-- Hosts not active in the current time window are faded.
-- Edges represent traffic observed in the current playback window.
-- Packet particles animate from source to destination as traffic crosses the current timestamp.
-- Node size reflects activity and total observed packets.
-
----
-
-## 📡 Supported captures
-
-| Area | Support |
-| ---- | ------- |
-| **File formats** | PCAPNG and classic PCAP |
-| **PCAPNG blocks** | Section Header, Interface Description, Enhanced Packet, Name Resolution, Interface Statistics |
-| **Timestamp handling** | Uses packet timestamps and interface timestamp resolution to replay traffic in capture time |
-| **Link-layer decoding** | Ethernet, raw IP, Linux cooked capture, VLAN-tagged Ethernet |
-| **Network protocols** | IPv4, IPv6, ARP |
-| **Transport / control** | TCP, UDP, ICMP, ICMPv6, IGMP |
-| **Name protocols** | DNS, mDNS, LLMNR |
-| **Service labeling** | Common service labels such as DNS, HTTPS, QUIC, mDNS, and LLMNR when ports or decoded traffic indicate them |
-
-Unsupported or malformed packets are skipped rather than stopping the entire parse.
-
----
-
-
-## 🎨 Themes and Cyber display
-
-The app includes three display themes:
-
-- **Cyber**: futuristic neon display and the default visual mode
-- **Dark**: classic low-light analyst display
-- **Light**: high-contrast bright display
-
-The Cyber theme is wired to use a local **Zen Dots** font file when present beside `pcap-visualizer.html`. The project package does not redistribute font files; place your licensed font file in the same folder using the filename referenced in the CSS if you want the exact Cyber typography.
-
-Menu items, filters, playback options, and export controls include hover tooltips by default.
-
-## 🧷 Host details and tooltips
-
-Click a host node to show:
-
-- Display label
-- Raw address
-- Host class
-- Inferred device type
-- Device of Interest finding status
-- Current-window packet count
-- Total packet count
-- Total byte count
-- Known DNS aliases
-- One-click host filtering
-- One-click marking or removal as a Device of Interest
-
-Hover over edges and nodes to see packet and flow summaries.
-
----
-
-## 🖼️ Exporting and Findings
-
-Use **Save SVG** or **Save PNG** to export the current network diagram. Use **Export Findings** to create an OpenDocument Text `.odt` report that contains:
-
-- A PNG image of the current network display
-- Finding label entered by the analyst
-- Case notes entered by the analyst
-- Current capture timestamp and playback window
-- Active filters
-- Devices marked as **Devices of Interest in Findings**
-
-This is useful for:
-
-- Incident notes
-- Timeline reports
-- Screenshots without browser UI
-- Sharing a specific capture moment with teammates
-- Case documentation and repeatable finding exports
-
----
-
-## 🔐 Privacy and security
+## 🔒 Privacy and security
 
 - Capture parsing runs locally in your browser.
-- The file is read from disk into browser memory.
-- The app does not upload captures.
-- The app does not call external DNS, WHOIS, GeoIP, or enrichment APIs.
-- DNS names shown in the interface are decoded from the capture itself.
-
-For sensitive captures, use the tool offline or in an isolated browser profile.
+- PCAP/PCAPNG files are not uploaded by the app.
+- Map exclusions and findings do not modify the original capture file.
 
 ---
 
-## ⚠️ Known limitations
+## 📤 Supported exports
 
-- Encrypted DNS, encrypted SNI, VPN tunnels, and opaque application payloads may hide useful hostnames.
-- The app does not decrypt TLS or reconstruct full application sessions.
-- DNS names only appear if the capture contains DNS, mDNS, LLMNR, or PCAPNG name-resolution data.
-- Very large captures can consume significant browser memory.
-- Dense captures may still need filtering, lower **Max hosts**, or increased **Host spacing**.
-- The diagram shows observed communication, not guaranteed physical topology.
-
----
-
-## 🧩 Troubleshooting
-
-### The graph is too crowded
-
-Try:
-
-- Increase **Host spacing**
-- Lower **Max hosts**
-- Filter by host, port, or protocol
-- Use a smaller playback **Window**
-
-### I only see IP addresses
-
-The capture may not contain DNS answers or name-resolution records. Enable **Prefer DNS labels** and **Show IP under DNS label**, then check the DNS panel for decoded names.
-
-### Playback feels slow
-
-Try:
-
-- Lower **Max hosts**
-- Use a shorter **Window**
-- Filter to specific hosts or ports
-- Close other memory-heavy browser tabs
-
-### Some packets are missing from the graph
-
-Packets with unsupported link types, malformed headers, or insufficient decoded source/destination information may be skipped for visualization.
+| Export | Output |
+| ------ | ------ |
+| **Save SVG** | Current network map as `.svg`. |
+| **Save PNG** | Current network map as `.png`. |
+| **Add Finding** | Adds the current view to the report queue. |
+| **Final Export Report** | Builds one CompSec Direct branded `.docx` report from all queued findings. |
 
 ---
 
-## 🧪 Development notes
+## 🧩 Supported captures
 
-The application is intentionally built as a single standalone HTML file:
-
-```text
-pcap-visualizer.html
-```
-
-Internally it uses:
-
-- Browser `File` APIs to load captures
-- A Web Worker to parse capture data without freezing the UI
-- JavaScript `DataView` parsing for PCAPNG and PCAP structures
-- SVG for the network diagram, edges, nodes, labels, and packet particles
-- In-memory indexes for filters, DNS labels, host stats, and playback windows
+- PCAPNG Section Header, Interface Description, Enhanced Packet, Simple Packet, Name Resolution, and Interface Statistics blocks
+- Classic PCAP
+- Ethernet, raw IPv4/IPv6, and Linux cooked captures
+- IPv4, IPv6, ARP, TCP, UDP, ICMP, ICMPv6, IGMP, VLAN-tagged Ethernet
+- DNS, mDNS, and LLMNR packet extraction
 
 ---
 
-## 🗺️ Roadmap ideas
+## 🤝 Contributing ideas
 
-Ideas for future improvements:
-
-- ✅ Zoom and pan controls
-- 📦 Subnet grouping or collapsible host groups
-- 📌 Pinning important hosts
-- 🚦 Separate lanes for internal, external, multicast, and broadcast hosts
-- 🧊 Collapse low-activity hosts
-- 📁 Export filtered packet summaries as CSV or JSON
-- 🕵️ Optional protocol-specific panels for DNS, HTTP, TLS, and SMB metadata
-
----
-
-## 🤝 Contributing
-
-PRs and ideas are welcome. 💚
-
-Good next contributions:
-
-- Improve service labeling heuristics
-- Add more link-layer decoders
-- Add subnet grouping
-- Improve performance for very large captures
-- Add richer export formats
+- Add more device-type heuristics
+- Add subnet-aware local grouping
+- Add report templates for different incident types
+- Add timeline bookmarks
+- Add larger capture indexing for very large cases

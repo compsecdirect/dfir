@@ -424,6 +424,79 @@
       .filter-status { flex-direction: column; align-items: flex-start; }
     }
 
+
+    /* v6 findings, focus, logical-group, and exclusion UI */
+    .finding-actions {
+      flex: 1 1 430px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-width: min(430px, 100%);
+    }
+    .finding-actions button { font-weight: 800; }
+    .finding-actions .pill { min-height: 30px; align-items: center; }
+    .top-action-primary {
+      background: linear-gradient(135deg, rgba(52,211,153,0.26), rgba(56,189,248,0.22));
+      border-color: rgba(52,211,153,0.54);
+      color: var(--text);
+    }
+    .top-action-warn {
+      background: linear-gradient(135deg, rgba(245,158,11,0.28), rgba(167,139,250,0.18));
+      border-color: rgba(245,158,11,0.52);
+      color: var(--text);
+    }
+    .quick-focus-overlay {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      z-index: 8;
+      width: min(420px, calc(100% - 160px));
+      max-height: 42%;
+      overflow: auto;
+      padding: 10px;
+      border-radius: 16px;
+      background: rgba(2,6,23,0.72);
+      border: 1px solid rgba(148,163,184,0.22);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 12px 42px rgba(0,0,0,0.32);
+      font-size: 11px;
+      color: var(--text);
+    }
+    .quick-focus-overlay h4 { margin: 0 0 6px; font-size: 12px; color: var(--accent); letter-spacing: 0.02em; }
+    .quick-focus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .quick-focus-list { display: grid; gap: 4px; min-width: 0; }
+    .quick-focus-item { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid rgba(148,163,184,0.10); padding-bottom: 3px; min-width: 0; }
+    .quick-focus-item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .edge-label-bg { fill: rgba(2, 6, 23, 0.82); stroke: rgba(248, 250, 252, 0.32); stroke-width: 0.8; rx: 5; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.45)); }
+    body[data-theme="light"] .edge-label-bg { fill: rgba(255,255,255,0.92); stroke: rgba(15,23,42,0.28); }
+    .group-box { fill: rgba(15, 23, 42, 0.14); stroke: rgba(148, 163, 184, 0.22); stroke-width: 1.1; stroke-dasharray: 8 6; pointer-events: none; }
+    .group-box.local { fill: rgba(52,211,153,0.07); stroke: rgba(52,211,153,0.34); }
+    .group-box.remote { fill: rgba(96,165,250,0.07); stroke: rgba(96,165,250,0.34); }
+    .group-box.special { fill: rgba(244,114,182,0.06); stroke: rgba(244,114,182,0.30); }
+    .group-label { fill: var(--muted); font-size: 12px; font-weight: 850; paint-order: stroke; stroke: var(--export-bg); stroke-width: 4px; pointer-events: none; }
+    .vault-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .geoip-result { display: grid; gap: 5px; max-height: 190px; overflow: auto; }
+    .geoip-card { border: 1px solid rgba(148,163,184,0.13); border-radius: 10px; padding: 7px; background: rgba(15,23,42,0.42); font-size: 12px; }
+    .node.excluded-preview .node-shape { opacity: 0.18; }
+    .node { cursor: grab; }
+    .node:active { cursor: grabbing; }
+    .panel-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .panel-actions button, .panel-actions .file-button { flex: 1 1 auto; font-size: 12px; }
+    .queue-list { display: grid; gap: 7px; margin-top: 8px; }
+    .queue-item { border: 1px solid rgba(148,163,184,0.15); border-radius: 12px; padding: 8px; background: rgba(15,23,42,0.42); }
+    .queue-item strong { display: block; margin-bottom: 3px; }
+    .queue-item small { color: var(--muted); display: block; line-height: 1.35; }
+    .queue-item button { margin-top: 6px; min-height: 30px; padding: 5px 8px; font-size: 11px; }
+    .textarea-compact { width: 100%; min-height: 92px; resize: vertical; border-radius: 12px; padding: 10px; background: rgba(15,23,42,0.62); color: var(--text); border: 1px solid rgba(148,163,184,0.20); }
+    .map-mode-note { color: var(--muted); font-size: 11px; line-height: 1.4; margin-top: 6px; }
+    @media (max-width: 960px) {
+      .quick-focus-overlay { position: static; width: auto; max-height: none; margin: 8px; }
+      .quick-focus-grid { grid-template-columns: 1fr; }
+      .finding-actions { justify-content: flex-start; }
+    }
+
   </style>
 </head>
 <body data-theme="cyber">
@@ -432,6 +505,13 @@
       <div class="brand">
         <h1>PCAP Visualizer - By CompSec Direct</h1>
         <p>Accelerated flow playback with persistent hosts, DNS labels, host/port/protocol filters, and searchable packets</p>
+      </div>
+      <div class="finding-actions" aria-label="Findings actions">
+        <button id="addFindingTop" class="primary top-action-primary" disabled title="Add the current timestamp, selected view, notes, and map image to the findings report queue">Add Finding</button>
+        <button id="markInterestTop" class="ghost top-action-warn" disabled title="Mark the selected host as a Device of Interest for findings and reports">Mark Device of Interest</button>
+        <button id="excludeSelectedHost" class="ghost" disabled title="Hide the selected host from the network map without deleting capture data">Exclude Selected</button>
+        <button id="finalExportReport" class="primary" disabled title="Build one final Word-compatible DOCX report from all queued findings and Devices of Interest">Final Export Report</button>
+        <span id="findingCountPill" class="pill" title="Queued finding entries">0 findings</span>
       </div>
       <div class="file-actions">
         <label class="control-group" title="Choose the display theme for the interface and exported findings.">
@@ -484,6 +564,20 @@
           <option value="30">30 sec</option>
         </select>
       </div>
+      <div class="control-group" title="Choose how hosts are arranged in the network map.">
+        <label for="networkViewSelect">View</label>
+        <select id="networkViewSelect" disabled title="Timeline grid, findings-centered focus, or logical local/remote groups">
+          <option value="grid" selected>Timeline grid</option>
+          <option value="focus">Finding focus</option>
+          <option value="logical">Logical groups</option>
+        </select>
+      </div>
+      <div class="control-group" title="Choose the findings host placed at the center of the Finding focus view.">
+        <label for="focusHostSelect">Focus host</label>
+        <select id="focusHostSelect" disabled title="Finding focus host. Mark devices of interest to add them here.">
+          <option value="">Auto</option>
+        </select>
+      </div>
       <div class="control-group range-control" title="Limit the number of hosts shown at once for dense captures.">
         <label for="maxNodes">Max hosts</label>
         <input id="maxNodes" type="range" min="30" max="500" value="160" step="10" title="Maximum hosts to draw" />
@@ -502,7 +596,7 @@
       </div>
       <button id="snapshot" class="ghost" disabled title="Download the current network view as an SVG">Save SVG</button>
       <button id="savePng" class="ghost" disabled title="Download the current network view as a PNG image">Save PNG</button>
-      <button id="exportFindings" class="ghost" disabled title="Create an OpenDocument Text finding report with the current PNG network display, label, notes, and devices of interest">Export Findings</button>
+      <button id="exportFindings" class="ghost" disabled title="Add the current map, timestamp, label, notes, and Devices of Interest to the findings report queue">Add Finding</button>
       <button id="resetView" class="ghost" disabled title="Reset particles, pan, zoom, and recompute layout">Reset view</button>
       <span id="fps" class="time-label" title="Rendering frames per second">0 fps</span>
     </section>
@@ -567,8 +661,10 @@
           <button id="panRight" type="button" title="Pan right">→</button>
           <button id="panDown" type="button" title="Pan down">↓</button>
           <button id="zoomFit" type="button" class="wide" title="Fit all visible devices in the map">Fit view</button>
+          <button id="resetPositions" type="button" class="wide" title="Clear manually dragged device positions">Reset device positions</button>
         </div>
-        <div class="graph-hint">Wheel to zoom • drag empty map to pan • click a device for details</div>
+        <div id="quickFocusOverlay" class="quick-focus-overlay hidden" title="Top talkers and longest sessions for the loaded/filtered capture"></div>
+        <div class="graph-hint">Wheel to zoom • drag empty map to pan • drag a device to pin its position • click a device for details</div>
         <div id="emptyOverlay" class="overlay-empty">
           <h2>Open a capture to start the movie</h2>
           <p>Drop a <strong>.pcapng</strong> or <strong>.pcap</strong> file here. Parsing, DNS extraction, and filtering all happen locally in your browser.</p>
@@ -591,6 +687,71 @@
               <div class="stat"><div id="windowBytes" class="value">0 B</div><div class="label">bytes in window</div></div>
               <div class="stat"><div id="windowEdges" class="value">0</div><div class="label">directed flows</div></div>
             </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Quick Focus</h3>
+          <div id="quickFocusPanel" class="panel-body">
+            <div class="kv"><span class="k">Status</span><span class="v">Top talkers and longest sessions appear after a capture is loaded.</span></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Findings report builder <span id="findingsPanelCount" class="pill">0</span></h3>
+          <div class="panel-body">
+            <div class="panel-actions">
+              <button id="addFindingPanel" class="primary" disabled title="Add the current view and timestamp to the report queue">Add Finding</button>
+              <button id="markInterestPanel" class="ghost" disabled title="Mark the currently selected host as a Device of Interest">Mark Selected</button>
+              <button id="finalExportPanel" class="primary" disabled title="Export all queued findings and Devices of Interest to a DOCX report">Final Export</button>
+              <button id="exportSqlDump" class="ghost" disabled title="Export findings, marked devices, exclusions, and GeoIP cache as SQLite-compatible SQL">Export SQLite SQL</button>
+            </div>
+            <div id="findingsQueueList" class="queue-list"><span class="muted">No findings added yet.</span></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Network map exclusions</h3>
+          <div class="panel-body">
+            <div class="panel-actions">
+              <button id="applyExclusions" class="ghost" disabled title="Parse and apply pasted host/IP/DNS exclusions">Apply list</button>
+              <button id="clearExclusions" class="ghost" disabled title="Clear all map exclusions">Clear list</button>
+              <label for="exclusionFile" class="file-button" title="Import a CSV, TSV, or text file containing IP addresses or DNS names to exclude">Import file</label>
+              <input id="exclusionFile" type="file" accept=".txt,.csv,.tsv,text/plain,text/csv" />
+            </div>
+            <textarea id="exclusionText" class="textarea-compact" placeholder="Paste IPs/DNS names/MACs here. CSV, TSV, and copied spreadsheet lists are supported; unrelated text is ignored." disabled></textarea>
+            <div id="exclusionsStatus" class="map-mode-note">No hosts excluded from the map.</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>GeoIP / encrypted vault</h3>
+          <div class="panel-body">
+            <div class="field">
+              <label for="vaultPassphrase">Vault encryption key</label>
+              <input id="vaultPassphrase" type="password" autocomplete="new-password" placeholder="Set or enter local vault key" title="Used locally to encrypt API key, findings, exclusions, manual positions, and GeoIP cache" />
+            </div>
+            <div class="panel-actions">
+              <button id="unlockVault" type="button" title="Unlock or initialize the encrypted local browser vault">Unlock / Init Vault</button>
+              <button id="lockVault" type="button" class="ghost" title="Forget the active vault key from memory">Lock</button>
+            </div>
+            <div id="vaultStatus" class="map-mode-note">Vault locked. Settings are encrypted locally after unlock.</div>
+            <div class="vault-grid">
+              <div class="field">
+                <label for="ipstackEndpoint">ipstack endpoint</label>
+                <input id="ipstackEndpoint" type="url" value="https://api.ipstack.com" title="Optional ipstack API endpoint. Change only if your subscription requires another endpoint." />
+              </div>
+              <div class="field">
+                <label for="ipstackKey">ipstack API key</label>
+                <input id="ipstackKey" type="password" autocomplete="off" placeholder="Stored encrypted after vault unlock" title="Stored encrypted in the local vault; never written in clear text by the app" />
+              </div>
+            </div>
+            <div class="panel-actions">
+              <button id="saveIpstackKey" type="button" title="Encrypt and store the ipstack key and endpoint in the local vault">Save API Key</button>
+              <button id="lookupIpstack" type="button" disabled title="Query public IPv4 addresses from the current capture through ipstack and cache results encrypted">Lookup Public IPs</button>
+            </div>
+            <div id="geoipStatus" class="map-mode-note">GeoIP lookup is optional and only runs when you click Lookup Public IPs.</div>
+            <div id="geoipPanel" class="geoip-result"><span class="muted">No GeoIP results cached.</span></div>
           </div>
         </section>
 
@@ -648,9 +809,10 @@
 
     <div id="findingsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="findingsTitle">
       <form id="findingsForm" class="modal-card">
-        <h2 id="findingsTitle">Export Findings</h2>
-        <p>Create an OpenDocument Text report containing a PNG of the current network display, analyst label, notes, timestamp, active filters, and marked Devices of Interest.</p>
+        <h2 id="findingsTitle">Add Finding</h2>
+        <p>Add the current network display, timestamp, analyst label, notes, active filters, and marked Devices of Interest to the report queue. Use Final Export Report when ready.</p>
         <div class="modal-grid">
+          <div class="kv"><span class="k">Capture timestamp</span><span id="findingTimestampLabel" class="v">--</span></div>
           <label>Finding label
             <input id="findingLabel" type="text" maxlength="120" placeholder="Suspicious DNS beaconing, lateral movement, unusual external service..." required />
           </label>
@@ -663,7 +825,7 @@
         </div>
         <div class="modal-actions">
           <button id="cancelFindings" type="button" class="ghost">Cancel</button>
-          <button type="submit" class="primary">Export Findings</button>
+          <button type="submit" class="primary">Add Finding to Report</button>
         </div>
       </form>
     </div>
