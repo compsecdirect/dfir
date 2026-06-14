@@ -33,6 +33,8 @@
     markInterestTop: document.getElementById('markInterestTop'),
     excludeSelectedHost: document.getElementById('excludeSelectedHost'),
     finalExportReport: document.getElementById('finalExportReport'),
+    recordMovie: document.getElementById('recordMovie'),
+    recordMovieInline: document.getElementById('recordMovieInline'),
     findingCountPill: document.getElementById('findingCountPill'),
     networkViewSelect: document.getElementById('networkViewSelect'),
     focusHostSelect: document.getElementById('focusHostSelect'),
@@ -103,8 +105,13 @@
     ipstackEndpoint: document.getElementById('ipstackEndpoint'),
     saveIpstackKey: document.getElementById('saveIpstackKey'),
     lookupIpstack: document.getElementById('lookupIpstack'),
+    abuseAuthKey: document.getElementById('abuseAuthKey'),
+    lookupThreatIntel: document.getElementById('lookupThreatIntel'),
     geoipStatus: document.getElementById('geoipStatus'),
+    threatIntelStatus: document.getElementById('threatIntelStatus'),
     geoipPanel: document.getElementById('geoipPanel'),
+    threatIntelPanel: document.getElementById('threatIntelPanel'),
+    mapContextMenu: document.getElementById('mapContextMenu'),
     status: document.getElementById('status')
   };
 
@@ -133,22 +140,30 @@
     preferDns: true,
     showIpUnderName: true,
     geoipCache: {},
+    threatIntelCache: {},
     vaultDb: null,
     vaultKey: null,
     vaultUnlocked: false,
     vaultSalt: null,
     ipstackApiKey: '',
     ipstackEndpoint: 'https://api.ipstack.com',
+    abuseAuthKey: '',
     selectedHost: null,
     devicesOfInterest: new Set(),
     findings: [],
     excludedHosts: new Set(),
     manualPositions: new Map(),
+    edgeControls: new Map(),
     networkViewMode: 'grid',
     focusHost: '',
     groupBoxes: [],
     nodeDrag: null,
     nodeDragMoved: false,
+    edgeDrag: null,
+    movieRecorder: null,
+    movieChunks: [],
+    movieCanvas: null,
+    movieTimer: null,
     panZoom: { x: 0, y: 0, scale: 1 },
     isPanning: false,
     panStart: null,
@@ -411,6 +426,76 @@
     return Array.from(ips).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }
 
+
+  function publicIocsForThreatLookup() {
+    const set = new Set();
+    for (const h of state.filteredHostStats || []) {
+      if (isHostExcluded(h.host)) continue;
+      const cls = h.className || classifyHost(h.host);
+      const publicIp = isPublicIPv4(h.host);
+      if (!publicIp && cls !== 'remote') continue;
+      if (publicIp) set.add(h.host);
+      const meta = state.hostIndex.get(h.host) || h;
+      for (const name of [meta.label, ...(meta.names || [])]) {
+        const n = normalizeHostKey(name);
+        if (n && n !== normalizeHostKey(h.host) && looksLikeHostToken(n) && !n.endsWith('.local')) set.add(n);
+      }
+    }
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }
+
+  function securitySummary(g) {
+    const s = g && g.security ? g.security : null;
+    if (!s) return '';
+    const parts = [];
+    const level = s.threat_level || s.threatLevel || s.threat || '';
+    if (level) parts.push('threat: ' + level);
+    if (s.is_tor || s.tor) parts.push('tor');
+    if (s.is_proxy || s.proxy) parts.push('proxy');
+    if (s.proxy_type) parts.push('proxy type: ' + s.proxy_type);
+    if (Array.isArray(s.threat_types) && s.threat_types.length) parts.push('types: ' + s.threat_types.join(', '));
+    return parts.join(' · ');
+  }
+
+  function hostAliases(host) {
+    const meta = state.hostIndex.get(host) || {};
+    return [host, meta.label, ...(meta.names || [])].map(normalizeHostKey).filter(Boolean);
+  }
+
+  function threatInfoForHost(host) {
+    const aliases = hostAliases(host);
+    const info = { malicious: false, tor: false, proxy: false, threatLevel: '', matches: [], summary: '' };
+    for (const key of aliases) {
+      const geo = state.geoipCache && state.geoipCache[key];
+      if (geo && geo.security) {
+        const s = geo.security;
+        if (s.is_tor || s.tor) info.tor = true;
+        if (s.is_proxy || s.proxy) info.proxy = true;
+        const level = String(s.threat_level || s.threatLevel || s.threat || '').toLowerCase();
+        if (level && !['none', 'low', 'unknown'].includes(level)) info.malicious = true;
+        if (level && !info.threatLevel) info.threatLevel = level;
+      }
+      const ti = state.threatIntelCache && state.threatIntelCache[key];
+      if (ti && ti.matched) {
+        info.malicious = true;
+        info.matches.push(ti);
+      }
+    }
+    const labels = [];
+    if (info.malicious) labels.push('malicious/intel match');
+    if (info.threatLevel) labels.push('ipstack threat: ' + info.threatLevel);
+    if (info.tor) labels.push('tor');
+    if (info.proxy) labels.push('proxy');
+    if (info.matches.length) labels.push(info.matches.map(m => m.sources || 'abuse.ch').join(', '));
+    info.summary = labels.join(' · ');
+    return info;
+  }
+
+  function threatClassesForHost(host) {
+    const t = threatInfoForHost(host);
+    return (t.malicious ? ' threat-malicious' : '') + (t.tor ? ' threat-tor' : '') + (t.proxy ? ' threat-proxy' : '');
+  }
+
   function openVaultDatabase() {
     if (state.vaultDb) return Promise.resolve(state.vaultDb);
     return new Promise((resolve, reject) => {
@@ -472,6 +557,7 @@
   function updateVaultUi(message) {
     safeEl(els.vaultStatus, el => { el.textContent = message || (state.vaultUnlocked ? 'Vault unlocked. API key, findings, exclusions, GeoIP cache, and manual positions are encrypted locally.' : 'Vault locked. Settings are encrypted locally after unlock.'); });
     safeEl(els.lookupIpstack, el => { el.disabled = !state.capture || !state.vaultUnlocked || !(els.ipstackKey && els.ipstackKey.value.trim()); });
+    safeEl(els.lookupThreatIntel, el => { el.disabled = !state.capture || !state.vaultUnlocked || !(els.abuseAuthKey && els.abuseAuthKey.value.trim()); });
     safeEl(els.exportSqlDump, el => { el.disabled = !state.capture; });
   }
 
@@ -497,8 +583,10 @@
       if (settings) {
         state.ipstackEndpoint = settings.ipstackEndpoint || state.ipstackEndpoint;
         state.ipstackApiKey = settings.ipstackApiKey || '';
+        state.abuseAuthKey = settings.abuseAuthKey || '';
         safeEl(els.ipstackEndpoint, el => { el.value = state.ipstackEndpoint; });
         safeEl(els.ipstackKey, el => { el.value = state.ipstackApiKey; });
+        safeEl(els.abuseAuthKey, el => { el.value = state.abuseAuthKey; });
       }
       const stored = await vaultLoadEncrypted('findings').catch(() => null);
       if (stored) {
@@ -506,11 +594,14 @@
         if (Array.isArray(stored.exclusions)) state.excludedHosts = new Set(stored.exclusions);
         if (Array.isArray(stored.findings)) state.findings = stored.findings.map(f => Object.assign({}, f, { pngBytes: f.pngBase64 ? base64ToBytes(f.pngBase64) : f.pngBytes })).filter(Boolean);
         if (Array.isArray(stored.manualPositions)) state.manualPositions = new Map(stored.manualPositions);
+        if (Array.isArray(stored.edgeControls)) state.edgeControls = new Map(stored.edgeControls);
         if (els.exclusionText) els.exclusionText.value = Array.from(state.excludedHosts).sort().join('\n');
       }
       const geo = await vaultLoadEncrypted('geoip_cache').catch(() => null);
       if (geo && typeof geo === 'object') state.geoipCache = geo;
-      renderGeoipPanel(); renderFindingsPanel(); renderExclusionStatus(); updateFocusHostOptions(); updateTopActionState();
+      const threat = await vaultLoadEncrypted('threat_intel_cache').catch(() => null);
+      if (threat && typeof threat === 'object') state.threatIntelCache = threat;
+      renderGeoipPanel(); renderThreatIntelPanel(); renderFindingsPanel(); renderExclusionStatus(); updateFocusHostOptions(); updateTopActionState();
       state.layoutKey = ''; state.needsRender = true;
       updateVaultUi('Vault unlocked. Encrypted settings, findings, exclusions, and GeoIP cache restored.');
     } catch (error) {
@@ -521,8 +612,9 @@
   }
 
   function lockVault() {
-    state.vaultKey = null; state.vaultUnlocked = false; state.ipstackApiKey = '';
+    state.vaultKey = null; state.vaultUnlocked = false; state.ipstackApiKey = ''; state.abuseAuthKey = '';
     safeEl(els.ipstackKey, el => { el.value = ''; });
+    safeEl(els.abuseAuthKey, el => { el.value = ''; });
     safeEl(els.vaultPassphrase, el => { el.value = ''; });
     updateVaultUi('Vault locked. Encryption key removed from memory.');
   }
@@ -530,17 +622,19 @@
   async function persistFindingsState() {
     if (!state.vaultUnlocked) return;
     const manualPositions = Array.from(state.manualPositions.entries());
+    const edgeControls = Array.from(state.edgeControls.entries());
     const findings = (state.findings || []).map(f => Object.assign({}, f, { pngBase64: f.pngBytes ? bytesToBase64(f.pngBytes) : f.pngBase64, pngBytes: undefined }));
-    await vaultSaveEncrypted('findings', { devices: Array.from(state.devicesOfInterest), exclusions: Array.from(state.excludedHosts), findings, manualPositions, updated: nowIso() }).catch(error => console.warn('Could not persist findings', error));
+    await vaultSaveEncrypted('findings', { devices: Array.from(state.devicesOfInterest), exclusions: Array.from(state.excludedHosts), findings, manualPositions, edgeControls, updated: nowIso() }).catch(error => console.warn('Could not persist findings', error));
   }
 
   async function saveIpstackSettings() {
     if (!state.vaultUnlocked) { alert('Unlock or initialize the encrypted vault before saving the API key.'); return; }
     state.ipstackEndpoint = (els.ipstackEndpoint && els.ipstackEndpoint.value.trim()) || 'https://api.ipstack.com';
     state.ipstackApiKey = (els.ipstackKey && els.ipstackKey.value.trim()) || '';
-    if (!state.ipstackApiKey) { alert('Enter an ipstack API key first.'); return; }
-    await vaultSaveEncrypted('settings', { ipstackEndpoint: state.ipstackEndpoint, ipstackApiKey: state.ipstackApiKey, updated: nowIso() });
-    updateVaultUi('ipstack API key and endpoint stored encrypted in the local vault.');
+    state.abuseAuthKey = (els.abuseAuthKey && els.abuseAuthKey.value.trim()) || state.abuseAuthKey || '';
+    if (!state.ipstackApiKey && !state.abuseAuthKey) { alert('Enter at least one API key first.'); return; }
+    await vaultSaveEncrypted('settings', { ipstackEndpoint: state.ipstackEndpoint, ipstackApiKey: state.ipstackApiKey, abuseAuthKey: state.abuseAuthKey, updated: nowIso() });
+    updateVaultUi('API keys and endpoints stored encrypted in the local vault.');
   }
 
   function renderGeoipPanel() {
@@ -550,7 +644,9 @@
     els.geoipPanel.innerHTML = entries.slice(0, 80).map(([ip, g]) => {
       const place = [g.city, g.region_name || g.region_code, g.country_name || g.country_code].filter(Boolean).join(', ') || (g.error ? 'Lookup error' : 'Cached');
       const org = g.connection && g.connection.isp ? ' · ' + g.connection.isp : (g.ip ? '' : '');
-      return '<div class="geoip-card"><strong>' + escapeHtml(ip) + '</strong><br>' + escapeHtml(place + org) + '</div>';
+      const sec = securitySummary(g);
+      const secHtml = sec ? '<br><span class="security-pill ' + (/tor|proxy|medium|high/i.test(sec) ? 'warn' : '') + '">' + escapeHtml(sec) + '</span>' : '';
+      return '<div class="geoip-card ' + (sec ? 'intel-hit' : 'intel-good') + '"><strong>' + escapeHtml(ip) + '</strong><br>' + escapeHtml(place + org) + secHtml + '</div>';
     }).join('');
   }
 
@@ -575,7 +671,118 @@
     }
     await vaultSaveEncrypted('geoip_cache', state.geoipCache).catch(error => console.warn('Could not persist GeoIP cache', error));
     renderGeoipPanel();
+    state.layoutKey = ''; state.needsRender = true;
     safeEl(els.geoipStatus, el => { el.textContent = 'GeoIP lookup complete. Cached results are encrypted in the local vault.'; });
+  }
+
+
+  function renderThreatIntelPanel() {
+    if (!els.threatIntelPanel) return;
+    const entries = Object.entries(state.threatIntelCache || {}).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+    if (!entries.length) { els.threatIntelPanel.innerHTML = '<span class="muted">No third-party intel results cached.</span>'; return; }
+    els.threatIntelPanel.innerHTML = entries.slice(0, 100).map(([ioc, rec]) => {
+      const cls = rec.matched ? 'geoip-card intel-hit' : 'geoip-card intel-good';
+      const status = rec.matched ? 'Match: ' + escapeHtml(rec.sources || 'abuse.ch') : 'No match';
+      const detail = rec.summary ? '<br>' + escapeHtml(rec.summary) : '';
+      return '<div class="' + cls + '"><strong>' + escapeHtml(ioc) + '</strong><br>' + status + detail + '</div>';
+    }).join('');
+  }
+
+  async function abusePost(url, data, key, json = false) {
+    const headers = key ? { 'Auth-Key': key } : {};
+    let body;
+    if (json) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(data); }
+    else { headers['Content-Type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(data); }
+    const res = await fetch(url, { method: 'POST', headers, body });
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch { return { query_status: 'parse_error', raw: text.slice(0, 800) }; }
+  }
+
+  function summarizeThreatFox(data) {
+    const rows = Array.isArray(data && data.data) ? data.data : [];
+    if (!rows.length || String(data.query_status || '').includes('no_result')) return { matched: false, count: 0, summary: data && data.query_status ? data.query_status : 'no result' };
+    const first = rows[0] || {};
+    const bits = ['ThreatFox ' + rows.length + ' result(s)'];
+    if (first.malware_printable) bits.push(first.malware_printable);
+    if (first.threat_type_desc) bits.push(first.threat_type_desc);
+    if (first.confidence_level) bits.push('confidence ' + first.confidence_level);
+    return { matched: true, count: rows.length, summary: bits.join(' · '), data: rows.slice(0, 5) };
+  }
+
+  function summarizeMalwareBazaar(data) {
+    const rows = Array.isArray(data && data.data) ? data.data : [];
+    const qs = String(data && data.query_status || '').toLowerCase();
+    if (!rows.length || qs.includes('no_result') || qs.includes('not_found') || qs.includes('illegal')) return { matched: false, count: 0, summary: data && data.query_status ? data.query_status : 'no result' };
+    const first = rows[0] || {};
+    const bits = ['MalwareBazaar ' + rows.length + ' result(s)'];
+    if (first.signature) bits.push(first.signature);
+    if (first.file_type) bits.push(first.file_type);
+    return { matched: true, count: rows.length, summary: bits.join(' · '), data: rows.slice(0, 5) };
+  }
+
+  function addThirdPartyFinding(ioc, record) {
+    if (!record || !record.matched) return;
+    const id = 'third-party-' + normalizeHostKey(ioc);
+    if ((state.findings || []).some(f => f.id === id || (f.sourceType === '3rd_party_network_information' && normalizeHostKey(f.ioc) === normalizeHostKey(ioc)))) return;
+    const host = Array.from(state.hostIndex.keys()).find(h => hostAliases(h).includes(normalizeHostKey(ioc))) || '';
+    const meta = host ? state.hostIndex.get(host) || {} : {};
+    const devices = host ? [{ host, display: hostDisplay(host), aliases: (meta.names || []).slice(0, 8), type: deviceShapeLabel(meta.deviceType || inferDeviceType(meta)) }] : [];
+    state.findings.push({
+      id,
+      sourceType: '3rd_party_network_information',
+      label: '3rd party network information match: ' + ioc,
+      notes: 'Automated third-party network information match from abuse.ch feeds. ' + (record.summary || ''),
+      ioc,
+      intel: record,
+      devices,
+      relTime: state.currentTime,
+      absTime: state.summary && Number.isFinite(state.summary.firstTs) ? state.summary.firstTs + state.currentTime : null,
+      windowStart: state.lastView ? state.lastView.start : state.currentTime,
+      windowEnd: state.lastView ? state.lastView.end : state.currentTime + state.windowSec,
+      viewMode: state.networkViewMode,
+      focusHost: host || state.focusHost || '',
+      selectedHost: host || state.selectedHost || '',
+      filters: 'third-party network information'
+    });
+  }
+
+  async function lookupThreatIntel() {
+    if (!state.capture) return;
+    if (!state.vaultUnlocked) { alert('Unlock the encrypted vault first so API keys and results can be stored protected.'); return; }
+    const key = (els.abuseAuthKey && els.abuseAuthKey.value.trim()) || state.abuseAuthKey;
+    if (!key) { alert('Enter and save an abuse.ch Auth-Key first.'); return; }
+    state.abuseAuthKey = key;
+    await vaultSaveEncrypted('settings', { ipstackEndpoint: state.ipstackEndpoint, ipstackApiKey: state.ipstackApiKey, abuseAuthKey: state.abuseAuthKey, updated: nowIso() }).catch(() => {});
+    const iocs = publicIocsForThreatLookup();
+    const todo = iocs.filter(ioc => !state.threatIntelCache[normalizeHostKey(ioc)]).slice(0, 250);
+    if (!todo.length) { safeEl(els.threatIntelStatus, el => { el.textContent = iocs.length ? 'All deduplicated public IP/DNS IOCs already have cached abuse.ch results.' : 'No public IP/DNS IOCs found in the current filtered capture.'; }); return; }
+    safeEl(els.threatIntelStatus, el => { el.textContent = 'Querying abuse.ch feeds for ' + todo.length + ' deduplicated IOC(s)...'; });
+    let done = 0, hits = 0;
+    for (const ioc of todo) {
+      const keyName = normalizeHostKey(ioc);
+      try {
+        const tf = await abusePost('https://threatfox-api.abuse.ch/api/v1/', { query: 'search_ioc', search_term: ioc }, key, true);
+        const mb = await abusePost('https://mb-api.abuse.ch/api/v1/', { query: 'get_taginfo', tag: ioc, limit: '10' }, key, false);
+        const tfs = summarizeThreatFox(tf);
+        const mbs = summarizeMalwareBazaar(mb);
+        const matched = tfs.matched || mbs.matched;
+        const sources = [tfs.matched ? 'ThreatFox' : '', mbs.matched ? 'MalwareBazaar' : ''].filter(Boolean).join(', ');
+        const summary = [tfs.matched ? tfs.summary : '', mbs.matched ? mbs.summary : ''].filter(Boolean).join(' | ') || 'No abuse.ch match';
+        const record = { ioc, cached_at: nowIso(), matched, sources, summary, threatfox: tfs, malwarebazaar: mbs };
+        state.threatIntelCache[keyName] = record;
+        if (matched) { hits += 1; addThirdPartyFinding(ioc, record); }
+      } catch (error) {
+        state.threatIntelCache[keyName] = { ioc, cached_at: nowIso(), matched: false, error: error && error.message ? error.message : String(error) };
+      }
+      done += 1;
+      safeEl(els.threatIntelStatus, el => { el.textContent = 'Checked ' + done + ' of ' + todo.length + ' IOC(s). Matches: ' + hits + '.'; });
+    }
+    await vaultSaveEncrypted('threat_intel_cache', state.threatIntelCache).catch(error => console.warn('Could not persist threat intel cache', error));
+    await persistFindingsState();
+    renderThreatIntelPanel(); renderFindingsPanel();
+    state.layoutKey = ''; state.needsRender = true;
+    safeEl(els.threatIntelStatus, el => { el.textContent = 'abuse.ch lookup complete. ' + hits + ' IOC match(es) added as Third-party network information findings.'; });
   }
 
   function devicesOfInterestRecords() {
@@ -584,7 +791,8 @@
       const names = (meta.names || []).slice(0, 8).join(', ');
       const geo = state.geoipCache && state.geoipCache[host] ? state.geoipCache[host] : null;
       const geoText = geo ? [geo.city, geo.region_name || geo.region_code, geo.country_name || geo.country_code].filter(Boolean).join(', ') : '';
-      return { host, display: hostDisplay(host), names, type: deviceShapeLabel(meta.deviceType || inferDeviceType(meta)), geoText, packets: meta.totalPackets || 0, bytes: meta.totalBytes || 0 };
+      const threat = threatInfoForHost(host);
+      return { host, display: hostDisplay(host), names, type: deviceShapeLabel(meta.deviceType || inferDeviceType(meta)), geoText, threatText: threat.summary, packets: meta.totalPackets || 0, bytes: meta.totalBytes || 0 };
     });
   }
 
@@ -593,15 +801,18 @@
   function exportSqlDump() {
     const devices = devicesOfInterestRecords();
     const geoEntries = Object.entries(state.geoipCache || {});
+    const threatEntries = Object.entries(state.threatIntelCache || {});
     let sql = '-- PCAP Visualizer SQLite-compatible export\n-- CompSec Direct\nPRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\n';
     sql += 'CREATE TABLE IF NOT EXISTS devices_of_interest (host TEXT PRIMARY KEY, display TEXT, dns_names TEXT, device_type TEXT, packets INTEGER, bytes INTEGER, geoip TEXT, exported_at TEXT);\n';
     sql += 'CREATE TABLE IF NOT EXISTS geoip_cache (ip TEXT PRIMARY KEY, json TEXT, cached_at TEXT);\n';
-    sql += 'CREATE TABLE IF NOT EXISTS findings (id TEXT PRIMARY KEY, label TEXT, notes TEXT, rel_time REAL, abs_time REAL, view_mode TEXT, focus_host TEXT, filters TEXT);\n';
+    sql += 'CREATE TABLE IF NOT EXISTS threat_intel_cache (ioc TEXT PRIMARY KEY, matched INTEGER, sources TEXT, summary TEXT, json TEXT, cached_at TEXT);\n';
+    sql += 'CREATE TABLE IF NOT EXISTS findings (id TEXT PRIMARY KEY, label TEXT, notes TEXT, rel_time REAL, abs_time REAL, view_mode TEXT, focus_host TEXT, filters TEXT, source_type TEXT, ioc TEXT);\n';
     sql += 'CREATE TABLE IF NOT EXISTS exclusions (entry TEXT PRIMARY KEY);\n';
-    sql += 'DELETE FROM devices_of_interest;\nDELETE FROM geoip_cache;\nDELETE FROM findings;\nDELETE FROM exclusions;\n';
+    sql += 'DELETE FROM devices_of_interest;\nDELETE FROM geoip_cache;\nDELETE FROM threat_intel_cache;\nDELETE FROM findings;\nDELETE FROM exclusions;\n';
     for (const d of devices) sql += 'INSERT INTO devices_of_interest VALUES (' + [sqliteString(d.host), sqliteString(d.display), sqliteString(d.names), sqliteString(d.type), Math.round(d.packets || 0), Math.round(d.bytes || 0), sqliteString(d.geoText), sqliteString(nowIso())].join(', ') + ');\n';
     for (const [ip, obj] of geoEntries) sql += 'INSERT INTO geoip_cache VALUES (' + [sqliteString(ip), sqliteString(JSON.stringify(obj)), sqliteString(obj.cached_at || nowIso())].join(', ') + ');\n';
-    for (const f of state.findings || []) sql += 'INSERT INTO findings VALUES (' + [sqliteString(f.id), sqliteString(f.label), sqliteString(f.notes), Number(f.relTime || 0), f.absTime == null ? 'NULL' : Number(f.absTime), sqliteString(f.viewMode), sqliteString(f.focusHost), sqliteString(f.filters)].join(', ') + ');\n';
+    for (const [ioc, obj] of threatEntries) sql += 'INSERT INTO threat_intel_cache VALUES (' + [sqliteString(ioc), obj.matched ? 1 : 0, sqliteString(obj.sources || ''), sqliteString(obj.summary || ''), sqliteString(JSON.stringify(obj)), sqliteString(obj.cached_at || nowIso())].join(', ') + ');\n';
+    for (const f of state.findings || []) sql += 'INSERT INTO findings VALUES (' + [sqliteString(f.id), sqliteString(f.label), sqliteString(f.notes), Number(f.relTime || 0), f.absTime == null ? 'NULL' : Number(f.absTime), sqliteString(f.viewMode), sqliteString(f.focusHost), sqliteString(f.filters), sqliteString(f.sourceType || ''), sqliteString(f.ioc || '')].join(', ') + ');\n';
     for (const e of state.excludedHosts || []) sql += 'INSERT INTO exclusions VALUES (' + sqliteString(e) + ');\n';
     sql += 'COMMIT;\n';
     downloadBlob(new Blob([sql], { type: 'application/sql' }), 'pcap-visualizer-findings.sqlite.sql');
@@ -715,7 +926,7 @@
       if (el === els.addFindingTop) el.textContent = enabled ? addText : 'Add Finding';
       else el.textContent = 'Add Finding';
     }
-    for (const el of [els.finalExportReport, els.finalExportPanel]) if (el) el.disabled = !enabled || count < 1;
+    for (const el of [els.finalExportReport, els.finalExportPanel]) if (el) el.disabled = !enabled || (count < 1 && (!state.devicesOfInterest || !state.devicesOfInterest.size));
     for (const el of [els.markInterestTop, els.markInterestPanel, els.excludeSelectedHost]) if (el) el.disabled = !enabled || !selected;
     const markText = selectedMarked ? 'Unmark Device of Interest' : 'Mark Device of Interest';
     if (els.markInterestTop) els.markInterestTop.textContent = selected ? markText : 'Mark Device of Interest';
@@ -1055,7 +1266,7 @@
   }
 
   function updateControlsEnabled(enabled) {
-    for (const el of [els.playPause, els.back10, els.backStep, els.forwardStep, els.forward10, els.prevMatch, els.nextMatch, els.timeline, els.snapshot, els.savePng, els.exportFindings, els.exportSqlDump, els.addFindingTop, els.addFindingPanel, els.finalExportReport, els.finalExportPanel, els.resetView, els.clearFilters, els.maxNodes, els.hostSpacing, els.showAll, els.networkViewSelect, els.focusHostSelect, els.applyExclusions, els.clearExclusions]) {
+    for (const el of [els.playPause, els.back10, els.backStep, els.forwardStep, els.forward10, els.prevMatch, els.nextMatch, els.timeline, els.snapshot, els.savePng, els.exportFindings, els.exportSqlDump, els.addFindingTop, els.addFindingPanel, els.finalExportReport, els.finalExportPanel, els.recordMovie, els.recordMovieInline, els.resetView, els.clearFilters, els.maxNodes, els.hostSpacing, els.showAll, els.networkViewSelect, els.focusHostSelect, els.applyExclusions, els.clearExclusions, els.lookupThreatIntel]) {
       if (el) el.disabled = !enabled;
     }
     for (const el of [els.searchText, els.hostFilter, els.srcFilter, els.dstFilter, els.portFilter, els.preferDns, els.showIpUnderName, els.exclusionText]) {
@@ -1377,8 +1588,9 @@
     const h = state.dimensions.h;
     const ordered = nodes.slice().sort((a, b) => (a.slot - b.slot) || a.host.localeCompare(b.host));
     const manualKey = Array.from(state.manualPositions.entries()).map(([host, p]) => host + ':' + Math.round(p.x) + ',' + Math.round(p.y)).join('|');
+    const edgeKey = Array.from(state.edgeControls.entries()).map(([key, p]) => key + ':' + Math.round(p.x) + ',' + Math.round(p.y)).join('|');
     const exclKey = Array.from(state.excludedHosts || []).join(',');
-    const key = w + 'x' + h + '|' + state.hostSpacing.toFixed(2) + '|' + state.networkViewMode + '|' + (state.focusHost || '') + '|' + manualKey + '|' + exclKey + '|' + ordered.map(n => n.host).join('|');
+    const key = w + 'x' + h + '|' + state.hostSpacing.toFixed(2) + '|' + state.networkViewMode + '|' + (state.focusHost || '') + '|' + manualKey + '|' + edgeKey + '|' + exclKey + '|' + ordered.map(n => n.host).join('|');
     if (key === state.layoutKey && state.layout.size) return state.layout;
     state.layoutKey = key;
     state.groupBoxes = [];
@@ -1398,25 +1610,14 @@
     const padLeft = 76, padRight = 76, padTop = 54, padBottom = 96;
     const availW = Math.max(180, w - padLeft - padRight);
     const availH = Math.max(180, h - padTop - padBottom);
-    const baseCellW = 145 * state.hostSpacing;
-    const baseCellH = 118 * state.hostSpacing;
-    const minCellW = 82;
-    const maxCols = Math.max(1, Math.min(n, Math.floor(availW / minCellW)));
-    let best = null;
-    for (let cols = 1; cols <= maxCols; cols++) {
-      const rows = Math.ceil(n / cols);
-      const scale = Math.min(1, availW / (cols * baseCellW), availH / (rows * baseCellH));
-      const fill = scale * Math.min(1, cols / Math.max(1, rows));
-      if (!best || scale > best.scale + 1e-9 || (Math.abs(scale - best.scale) < 1e-9 && fill > best.fill)) best = { cols, rows, scale, fill };
-    }
-    const cols = best.cols;
-    const cellW = Math.max(minCellW, baseCellW * best.scale);
-    const cellH = Math.max(78, baseCellH * best.scale);
+    const cellW = 110 + 86 * state.hostSpacing;
+    const cellH = 92 + 72 * state.hostSpacing;
+    const cols = Math.max(1, Math.min(n, Math.floor(availW / Math.min(cellW, 170)) || 1));
     const rows = Math.ceil(n / cols);
-    const usedW = Math.min(availW, cols * cellW);
-    const usedH = Math.min(availH, rows * cellH);
-    const offsetX = padLeft + Math.max(0, (availW - usedW) / 2);
-    const offsetY = padTop + Math.max(0, (availH - usedH) / 2);
+    const usedW = cols * cellW;
+    const usedH = rows * cellH;
+    const offsetX = padLeft + Math.max(0, (availW - Math.min(availW, usedW)) / 2);
+    const offsetY = padTop + Math.max(0, (availH - Math.min(availH, usedH)) / 2);
     ordered.forEach((node, index) => {
       const col = index % cols;
       const row = Math.floor(index / cols);
@@ -1512,7 +1713,7 @@
 
   function nodeRadius(node) {
     const score = (node.windowPackets || 0) * 3.2 + Math.log10((node.totalPackets || 1) + 1) * 7.2;
-    const cap = Math.max(16, Math.min(22, 14 + (state.hostSpacing - 1) * 4));
+    const cap = 20;
     return Math.max(6, Math.min(cap, 6 + score));
   }
 
@@ -1556,7 +1757,8 @@
     if (!crossed || !crossed.length) return;
     for (const p of crossed) {
       if (!layout.has(p.src) || !layout.has(p.dst)) continue;
-      state.particles.push({ src: p.src, dst: p.dst, protocol: p.service || p.protocol, bytes: p.bytes || 0, created: now, ttl: 850 + Math.min(600, Math.log10((p.bytes || 1) + 1) * 110) });
+      const key = p.src + '\u0000' + p.dst + '\u0000' + (p.service || p.protocol) + '\u0000' + (p.sport || '') + '\u0000' + (p.dport || '');
+      state.particles.push({ src: p.src, dst: p.dst, edgeKey: key, protocol: p.service || p.protocol, bytes: p.bytes || 0, created: now, ttl: 850 + Math.min(600, Math.log10((p.bytes || 1) + 1) * 110) });
     }
     if (state.particles.length > 700) state.particles.splice(0, state.particles.length - 700);
   }
@@ -1624,6 +1826,27 @@
     return html;
   }
 
+
+
+  function edgeControlPoint(e, a, b, startX, startY, endX, endY) {
+    const saved = state.edgeControls.get(e.key);
+    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) return { x: saved.x, y: saved.y, manual: true };
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    const ux = dx / len, uy = dy / len;
+    const curve = ((hashString(e.key) % 1000) / 1000 - 0.5) * (76 * Math.max(1, state.hostSpacing * 0.65));
+    return { x: (startX + endX) / 2 - uy * curve, y: (startY + endY) / 2 + ux * curve, manual: false };
+  }
+
+  function quadPoint(a, c, b, t) {
+    const u = 1 - t;
+    return { x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y };
+  }
+
+  function edgeDataAttrs(e) {
+    return ' data-edge-key="' + escapeAttr(e.key) + '" data-src="' + escapeAttr(e.src) + '" data-dst="' + escapeAttr(e.dst) + '" data-sport="' + escapeAttr(e.sport || '') + '" data-dport="' + escapeAttr(e.dport || '') + '" data-protocol="' + escapeAttr(e.protocol || '') + '" data-service="' + escapeAttr(e.service || e.protocol || '') + '"';
+  }
+
   function renderGraph(view, crossed, now) {
     updateDimensions();
     const nodes = visibleNodesForView(view);
@@ -1644,19 +1867,21 @@
       const ux = dx / len, uy = dy / len;
       const startX = a.x + ux * (a.r + 2), startY = a.y + uy * (a.r + 2);
       const endX = b.x - ux * (b.r + 5), endY = b.y - uy * (b.r + 5);
-      const curve = ((hashString(e.key) % 1000) / 1000 - 0.5) * 48;
-      const mx = (startX + endX) / 2 - uy * curve;
-      const my = (startY + endY) / 2 + ux * curve;
-      const width = 1.1 + Math.log1p(e.packets) / Math.log1p(maxPkts) * 5.4;
+      const c = edgeControlPoint(e, a, b, startX, startY, endX, endY);
+      const mx = c.x, my = c.y;
+      const width = 1.3 + Math.log1p(e.packets) / Math.log1p(maxPkts) * 5.8;
       const cls = protocolClass(e.service || e.protocol);
-      edgeHtml += '<path class="edge ' + cls + '" d="M' + startX.toFixed(1) + ',' + startY.toFixed(1) + ' Q' + mx.toFixed(1) + ',' + my.toFixed(1) + ' ' + endX.toFixed(1) + ',' + endY.toFixed(1) + '" stroke-width="' + width.toFixed(2) + '" marker-end="url(#arrow)"><title>' + escapeHtml(hostDisplay(e.src) + ' -> ' + hostDisplay(e.dst) + ' ' + e.service + ' ' + e.packets + ' packets') + '</title></path>';
-      if (idx < 22) {
-        const labelText = String((e.service || e.protocol) + ' ' + e.packets);
-        const labelW = Math.min(168, Math.max(46, labelText.length * 6.4 + 14));
-        const labelH = 17;
-        edgeHtml += '<rect class="edge-label-bg" x="' + (mx - labelW / 2).toFixed(1) + '" y="' + (my - labelH + 4).toFixed(1) + '" width="' + labelW.toFixed(1) + '" height="' + labelH.toFixed(1) + '" rx="5"></rect>';
-        edgeHtml += '<text class="edge-label" x="' + mx.toFixed(1) + '" y="' + my.toFixed(1) + '" text-anchor="middle">' + escapeHtml(labelText) + '</text>';
+      const d = 'M' + startX.toFixed(1) + ',' + startY.toFixed(1) + ' Q' + mx.toFixed(1) + ',' + my.toFixed(1) + ' ' + endX.toFixed(1) + ',' + endY.toFixed(1);
+      const attrs = edgeDataAttrs(e);
+      edgeHtml += '<g class="edge-bundle"' + attrs + '><path class="edge-hit" d="' + d + '"></path><path class="edge ' + cls + '" d="' + d + '" stroke-width="' + width.toFixed(2) + '" marker-end="url(#arrow)"><title>' + escapeHtml(hostDisplay(e.src) + ' -> ' + hostDisplay(e.dst) + ' ' + e.service + ' ' + e.packets + ' packets') + '</title></path>';
+      if (idx < 30) {
+        const labelText = String((e.service || e.protocol) + ' ' + e.packets + (e.dport ? ' :' + e.dport : ''));
+        const labelW = Math.min(220, Math.max(58, labelText.length * 7.4 + 18));
+        const labelH = 21;
+        edgeHtml += '<rect class="edge-label-bg"' + attrs + ' x="' + (mx - labelW / 2).toFixed(1) + '" y="' + (my - labelH + 6).toFixed(1) + '" width="' + labelW.toFixed(1) + '" height="' + labelH.toFixed(1) + '" rx="7"></rect>';
+        edgeHtml += '<text class="edge-label" x="' + mx.toFixed(1) + '" y="' + (my + 1).toFixed(1) + '" text-anchor="middle">' + escapeHtml(labelText) + '</text>';
       }
+      edgeHtml += '<circle class="edge-handle"' + attrs + ' cx="' + mx.toFixed(1) + '" cy="' + my.toFixed(1) + '" r="5.5"><title>Drag to route this line. Right-click for filters/report actions.</title></circle></g>';
     });
     els.edgesLayer.innerHTML = edgeHtml;
 
@@ -1669,8 +1894,10 @@
       if (!a || !b) continue;
       const t = Math.max(0, Math.min(1, age / part.ttl));
       const ease = 1 - Math.pow(1 - t, 2);
-      const x = a.x + (b.x - a.x) * ease;
-      const y = a.y + (b.y - a.y) * ease;
+      let x = a.x + (b.x - a.x) * ease;
+      let y = a.y + (b.y - a.y) * ease;
+      const ctrl = part.edgeKey ? state.edgeControls.get(part.edgeKey) : null;
+      if (ctrl) { const qp = quadPoint(a, ctrl, b, ease); x = qp.x; y = qp.y; }
       const size = Math.max(2.5, Math.min(8, 2.5 + Math.log10(part.bytes + 1)));
       const opacity = Math.max(0, 1 - t);
       const cls = protocolClass(part.protocol);
@@ -1687,11 +1914,17 @@
       const label = hostLabel(n.host);
       const sub = state.showIpUnderName && label !== n.host ? n.host : '';
       const deviceType = n.deviceType || 'device';
-      const cls = 'node ' + (n.className || 'remote') + ' device-' + deviceType + (n.deviceInterest ? ' device-interest' : '') + (n.active ? '' : ' inactive') + (state.selectedHost === n.host ? ' selected' : '');
-      const title = hostDisplay(n.host) + '\nDevice type: ' + deviceShapeLabel(deviceType) + '\nPackets now: ' + n.windowPackets + '\nTotal packets: ' + n.totalPackets + (n.deviceInterest ? '\nMarked as Device of Interest' : '');
+      const threat = threatInfoForHost(n.host);
+      const cls = 'node ' + (n.className || 'remote') + ' device-' + deviceType + threatClassesForHost(n.host) + (n.deviceInterest ? ' device-interest' : '') + (n.active ? '' : ' inactive') + (state.selectedHost === n.host ? ' selected' : '');
+      const title = hostDisplay(n.host) + '\nDevice type: ' + deviceShapeLabel(deviceType) + '\nPackets now: ' + n.windowPackets + '\nTotal packets: ' + n.totalPackets + (n.deviceInterest ? '\nMarked as Device of Interest' : '') + (threat.summary ? '\nThreat intel: ' + threat.summary : '');
       nodeHtml += '<g class="' + cls + '" data-host="' + escapeAttr(n.host) + '"><title>' + escapeHtml(title) + '</title>';
       if (state.selectedHost === n.host) nodeHtml += '<circle class="halo" cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="' + (p.r + 14).toFixed(1) + '"></circle>';
       nodeHtml += nodeShapeSvg(n, p);
+      if (threat.malicious || threat.tor || threat.proxy) {
+        const bx = p.x - p.r * 1.42, by = p.y - p.r * 1.35;
+        nodeHtml += '<circle class="threat-badge" cx="' + bx.toFixed(1) + '" cy="' + by.toFixed(1) + '" r="' + Math.max(7, p.r * 0.46).toFixed(1) + '"></circle>';
+        nodeHtml += '<text class="threat-badge-text" x="' + bx.toFixed(1) + '" y="' + by.toFixed(1) + '">' + (threat.malicious ? '!' : (threat.tor ? 'T' : 'P')) + '</text>';
+      }
       nodeHtml += '<text x="' + p.x.toFixed(1) + '" y="' + (p.y + p.r + 20).toFixed(1) + '" text-anchor="middle">' + escapeHtml(shortenHost(label, 28)) + '</text>';
       if (sub) nodeHtml += '<text class="subtext" x="' + p.x.toFixed(1) + '" y="' + (p.y + p.r + 33).toFixed(1) + '" text-anchor="middle">' + escapeHtml(shortenHost(sub, 24)) + '</text>';
       nodeHtml += '</g>';
@@ -1855,14 +2088,21 @@
       kv('Total bytes', fmtBytes(meta.totalBytes || 0)),
       kv('Sent / recv', fmtCount(meta.sentPackets || 0) + ' / ' + fmtCount(meta.recvPackets || 0)),
       kv('Now sent / recv', current ? (fmtCount(current.sent) + ' / ' + fmtCount(current.recv)) : '0 / 0'),
+      kv('Threat / API', threatInfoForHost(host).summary || 'No cached API/security flags'),
       '<div class="chip-note">Known DNS names</div><div class="pill-wrap">' + (names || '<span class="muted">No DNS alias decoded for this host</span>') + '</div>',
       '<button class="small-button" id="filterThisHost" type="button" title="Filter packets to this host">Filter this host</button> ',
+      '<button class="small-button" id="filterThisSource" type="button">Filter as source</button> ',
+      '<button class="small-button" id="filterThisDestination" type="button">Filter as destination</button> ',
       '<button class="small-button" id="toggleInterestHost" type="button" title="Include or remove this device from Export Findings">' + (marked ? 'Remove Device of Interest' : 'Mark Device of Interest') + '</button> ',
       '<button class="small-button" id="focusThisHost" type="button" title="Use this host as the center of Finding focus view">Focus view</button> ',
       '<button class="small-button" id="excludeThisHost" type="button" title="Hide this host from the network map">Exclude from map</button>'
     ].join('');
     const btn = document.getElementById('filterThisHost');
-    if (btn) btn.onclick = () => { els.hostFilter.value = hostDisplay(host, false); applyFilters(false); };
+    if (btn) btn.onclick = () => addHostFilter(host, 'any');
+    const srcBtn = document.getElementById('filterThisSource');
+    if (srcBtn) srcBtn.onclick = () => addHostFilter(host, 'src');
+    const dstBtn = document.getElementById('filterThisDestination');
+    if (dstBtn) dstBtn.onclick = () => addHostFilter(host, 'dst');
     const interestBtn = document.getElementById('toggleInterestHost');
     if (interestBtn) interestBtn.onclick = () => {
       if (state.devicesOfInterest.has(host)) state.devicesOfInterest.delete(host);
@@ -1921,7 +2161,7 @@
 
   function svgStyleText() {
     return `
-      .grid-line{stroke:rgba(148,163,184,.14);stroke-width:1}.edge{fill:none;stroke-linecap:round;opacity:.72}.edge.tcp{stroke:${cssVar('--tcp','#38bdf8')}}.edge.udp{stroke:${cssVar('--udp','#a78bfa')}}.edge.arp{stroke:${cssVar('--arp','#fbbf24')}}.edge.icmp{stroke:${cssVar('--icmp','#fb7185')}}.edge.other{stroke:${cssVar('--other','#cbd5e1')}}.edge-label-bg{fill:rgba(2,6,23,.82);stroke:rgba(248,250,252,.32);stroke-width:.8}.edge-label{fill:${cssVar('--text','#e2e8f0')};font-size:10px;paint-order:stroke;stroke:${cssVar('--export-bg','#08111f')};stroke-width:3px}.particle.tcp{fill:${cssVar('--tcp','#38bdf8')}}.particle.udp{fill:${cssVar('--udp','#a78bfa')}}.particle.arp{fill:${cssVar('--arp','#fbbf24')}}.particle.icmp{fill:${cssVar('--icmp','#fb7185')}}.particle.other{fill:${cssVar('--other','#cbd5e1')}}.node text{fill:${cssVar('--text','#f8fafc')};font-size:11px;font-weight:650;paint-order:stroke;stroke:${cssVar('--node-label-stroke','rgba(2,6,23,.75)')};stroke-width:3px}.node .subtext{fill:${cssVar('--muted','#94a3b8')};font-size:9px}.node-shape{stroke-width:1.8;vector-effect:non-scaling-stroke}.node.local .node-shape{fill:rgba(52,211,153,.92);stroke:#bbf7d0}.node.remote .node-shape{fill:rgba(96,165,250,.88);stroke:#bfdbfe}.node.mac .node-shape{fill:rgba(251,191,36,.88);stroke:#fde68a}.node.multicast .node-shape{fill:rgba(244,114,182,.88);stroke:#fbcfe8}.node.broadcast .node-shape{fill:rgba(251,113,133,.9);stroke:#fecdd3}.node.device-server .node-shape{fill:rgba(56,189,248,.85)}.node.device-router .node-shape{fill:rgba(167,139,250,.86)}.node.device-printer .node-shape{fill:rgba(251,191,36,.9)}.node.device-workstation .node-shape{fill:rgba(52,211,153,.86)}.node.device-cloud .node-shape{fill:rgba(96,165,250,.76)}.node.device-interest .node-shape{stroke:${cssVar('--warn','#f59e0b')};stroke-width:3}.device-detail{fill:rgba(2,6,23,.34);stroke:rgba(248,250,252,.62);stroke-width:1;vector-effect:non-scaling-stroke}.interest-star{fill:${cssVar('--warn','#f59e0b')};stroke:rgba(2,6,23,.78);stroke-width:1.5}.halo{fill:none;stroke:rgba(56,189,248,.34);stroke-width:9}
+      .grid-line{stroke:rgba(148,163,184,.14);stroke-width:1}.edge{fill:none;stroke-linecap:round;opacity:.72}.edge.tcp{stroke:${cssVar('--tcp','#38bdf8')}}.edge.udp{stroke:${cssVar('--udp','#a78bfa')}}.edge.arp{stroke:${cssVar('--arp','#fbbf24')}}.edge.icmp{stroke:${cssVar('--icmp','#fb7185')}}.edge.other{stroke:${cssVar('--other','#cbd5e1')}}.edge-label-bg{fill:rgba(2,6,23,.94);stroke:rgba(248,250,252,.58);stroke-width:1.1}.edge-label{fill:#fff;font-size:12px;font-weight:900;paint-order:stroke;stroke:rgba(0,0,0,.94);stroke-width:4px}.edge-handle{fill:${cssVar('--export-bg','#08111f')};stroke:${cssVar('--accent','#38bdf8')};stroke-width:2}.edge-hit{fill:none;stroke:transparent;stroke-width:16}.particle.tcp{fill:${cssVar('--tcp','#38bdf8')}}.particle.udp{fill:${cssVar('--udp','#a78bfa')}}.particle.arp{fill:${cssVar('--arp','#fbbf24')}}.particle.icmp{fill:${cssVar('--icmp','#fb7185')}}.particle.other{fill:${cssVar('--other','#cbd5e1')}}.node text{fill:${cssVar('--text','#f8fafc')};font-size:11px;font-weight:650;paint-order:stroke;stroke:${cssVar('--node-label-stroke','rgba(2,6,23,.75)')};stroke-width:3px}.node .subtext{fill:${cssVar('--muted','#94a3b8')};font-size:9px}.node-shape{stroke-width:1.8;vector-effect:non-scaling-stroke}.node.local .node-shape{fill:rgba(52,211,153,.92);stroke:#bbf7d0}.node.remote .node-shape{fill:rgba(96,165,250,.88);stroke:#bfdbfe}.node.mac .node-shape{fill:rgba(251,191,36,.88);stroke:#fde68a}.node.multicast .node-shape{fill:rgba(244,114,182,.88);stroke:#fbcfe8}.node.broadcast .node-shape{fill:rgba(251,113,133,.9);stroke:#fecdd3}.node.device-server .node-shape{fill:rgba(56,189,248,.85)}.node.device-router .node-shape{fill:rgba(167,139,250,.86)}.node.device-printer .node-shape{fill:rgba(251,191,36,.9)}.node.device-workstation .node-shape{fill:rgba(52,211,153,.86)}.node.device-cloud .node-shape{fill:rgba(96,165,250,.76)}.node.device-interest .node-shape{stroke:${cssVar('--warn','#f59e0b')};stroke-width:3}.node.threat-malicious .node-shape{stroke:${cssVar('--danger','#fb7185')};stroke-width:4}.node.threat-proxy .node-shape{stroke-dasharray:6 4}.node.threat-tor .node-shape{stroke-dasharray:2 3}.threat-badge{fill:${cssVar('--danger','#fb7185')};stroke:rgba(2,6,23,.92);stroke-width:1.6}.threat-badge-text{fill:#fff;font-size:8px;font-weight:900;text-anchor:middle;dominant-baseline:middle}.device-detail{fill:rgba(2,6,23,.34);stroke:rgba(248,250,252,.62);stroke-width:1;vector-effect:non-scaling-stroke}.interest-star{fill:${cssVar('--warn','#f59e0b')};stroke:rgba(2,6,23,.78);stroke-width:1.5}.halo{fill:none;stroke:rgba(56,189,248,.34);stroke-width:9}
     `;
   }
 
@@ -2039,12 +2279,42 @@
       return;
     }
     els.findingsQueueList.innerHTML = state.findings.map((f, idx) =>
-      '<div class="queue-item"><strong>' + escapeHtml(f.label) + '</strong><small>' + escapeHtml(formatDuration(f.relTime)) + ' · ' + escapeHtml(f.viewMode) + ' · ' + fmtCount((f.devices || []).length) + ' devices of interest</small><button type="button" class="ghost" data-delete-finding="' + idx + '">Delete entry</button></div>'
+      '<div class="queue-item"><strong>' + escapeHtml(f.label) + '</strong><small>' + escapeHtml(formatDuration(f.relTime)) + ' · ' + escapeHtml(f.sourceType === '3rd_party_network_information' ? '3rd party network information' : f.viewMode) + ' · ' + fmtCount((f.devices || []).length) + ' devices of interest' + (f.ioc ? ' · IOC ' + escapeHtml(f.ioc) : '') + '</small><button type="button" class="ghost" data-delete-finding="' + idx + '">Delete entry</button></div>'
     ).join('');
     for (const btn of els.findingsQueueList.querySelectorAll('[data-delete-finding]')) {
       btn.onclick = () => { state.findings.splice(Number(btn.getAttribute('data-delete-finding')), 1); renderFindingsPanel(); updateTopActionState(); };
     }
     updateTopActionState();
+  }
+
+
+  async function queueFinding(label, notes, extra = {}) {
+    const includePng = extra.includePng !== false;
+    let pngBytes = null;
+    if (includePng) {
+      const pngBlob = await graphPngBlob();
+      pngBytes = new Uint8Array(await pngBlob.arrayBuffer());
+    }
+    const devices = Array.from(state.devicesOfInterest || []).filter(host => !isHostExcluded(host)).map(host => {
+      const meta = state.hostIndex.get(host) || { host };
+      return { host, display: hostDisplay(host), aliases: (meta.names || []).slice(0, 8), type: deviceShapeLabel(meta.deviceType || inferDeviceType(meta)), threatText: threatInfoForHost(host).summary };
+    });
+    const finding = Object.assign({
+      id: Date.now() + '-' + Math.random().toString(16).slice(2),
+      label, notes, pngBytes, devices,
+      relTime: state.currentTime,
+      absTime: state.summary && Number.isFinite(state.summary.firstTs) ? state.summary.firstTs + state.currentTime : null,
+      windowStart: state.lastView ? state.lastView.start : state.currentTime,
+      windowEnd: state.lastView ? state.lastView.end : state.currentTime + state.windowSec,
+      viewMode: state.networkViewMode,
+      focusHost: getFocusHost(Array.from(state.layout.values()).map(p => p.node).filter(Boolean)),
+      selectedHost: state.selectedHost || '',
+      filters: state.filters && state.filters.active ? JSON.stringify({ text: state.filters.textTokens, host: state.filters.hostTokens, src: state.filters.srcTokens, dst: state.filters.dstTokens, ports: state.filters.portRanges, protocols: Array.from(state.filters.protocols) }) : 'none'
+    }, extra);
+    state.findings.push(finding);
+    renderFindingsPanel();
+    await persistFindingsState();
+    return finding;
   }
 
   async function submitFindingsExport(event) {
@@ -2054,27 +2324,8 @@
     const notes = els.findingNotes.value.trim();
     try {
       els.status.textContent = 'Adding finding to report queue...';
-      const pngBlob = await graphPngBlob();
-      const pngBytes = new Uint8Array(await pngBlob.arrayBuffer());
-      const devices = Array.from(state.devicesOfInterest || []).filter(host => !isHostExcluded(host)).map(host => {
-        const meta = state.hostIndex.get(host) || { host };
-        return { host, display: hostDisplay(host), aliases: (meta.names || []).slice(0, 8), type: deviceShapeLabel(meta.deviceType || inferDeviceType(meta)) };
-      });
-      state.findings.push({
-        id: Date.now() + '-' + Math.random().toString(16).slice(2),
-        label, notes, pngBytes, devices,
-        relTime: state.currentTime,
-        absTime: state.summary && Number.isFinite(state.summary.firstTs) ? state.summary.firstTs + state.currentTime : null,
-        windowStart: state.lastView ? state.lastView.start : state.currentTime,
-        windowEnd: state.lastView ? state.lastView.end : state.currentTime + state.windowSec,
-        viewMode: state.networkViewMode,
-        focusHost: getFocusHost(Array.from(state.layout.values()).map(p => p.node).filter(Boolean)),
-        selectedHost: state.selectedHost || '',
-        filters: state.filters && state.filters.active ? JSON.stringify({ text: state.filters.textTokens, host: state.filters.hostTokens, src: state.filters.srcTokens, dst: state.filters.dstTokens, ports: state.filters.portRanges, protocols: Array.from(state.filters.protocols) }) : 'none'
-      });
+      await queueFinding(label, notes);
       closeFindingsModal();
-      renderFindingsPanel();
-      await persistFindingsState();
       els.status.textContent = 'Finding added to report queue. Use Final Export Report when ready.';
     } catch (error) {
       alert('Add Finding failed: ' + (error && error.message ? error.message : error));
@@ -2100,7 +2351,8 @@
     return devices.map(d => {
       const dns = Array.isArray(d.aliases) ? d.aliases.join(', ') : (d.names || '');
       const geo = d.geoText ? ' | GeoIP: ' + d.geoText : '';
-      return docxParagraph('• ' + d.display + ' | ' + d.host + ' | ' + d.type + (dns ? ' | DNS: ' + dns : '') + geo);
+      const threat = d.threatText ? ' | Threat Intel: ' + d.threatText : '';
+      return docxParagraph('• ' + d.display + ' | ' + d.host + ' | ' + d.type + (dns ? ' | DNS: ' + dns : '') + geo + threat);
     }).join('');
   }
 
@@ -2174,16 +2426,22 @@
       body += docxParagraph('No individual findings were queued. This report contains the Devices of Interest summary.');
     }
     (state.findings || []).forEach((f, idx) => {
+      const hasImage = f.pngBytes && f.pngBytes.length;
       const rId = 'rIdImg' + (idx + 1);
       const imgName = 'finding-' + (idx + 1) + '.png';
-      images.push({ name: 'word/media/' + imgName, data: f.pngBytes });
-      relationships.push('<Relationship Id="' + rId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' + imgName + '"/>');
-      body += docxParagraph('Finding ' + (idx + 1) + ': ' + f.label, { bold: true, size: 28, color: '00AEEF' });
+      if (hasImage) {
+        images.push({ name: 'word/media/' + imgName, data: f.pngBytes });
+        relationships.push('<Relationship Id="' + rId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/' + imgName + '"/>');
+      }
+      body += docxParagraph('Finding ' + (idx + 1) + ': ' + f.label, { bold: true, size: 28, color: f.sourceType === '3rd_party_network_information' ? 'C00000' : '00AEEF' });
+      if (f.sourceType === '3rd_party_network_information') body += docxParagraph('Finding type: 3rd party network information' + (f.ioc ? ' | IOC: ' + f.ioc : ''));
       body += docxParagraph('Capture timestamp: ' + formatDuration(f.relTime) + (f.absTime ? ' / ' + formatAbsTimestamp(f.absTime) : ''));
       body += docxParagraph('Playback window: ' + formatDuration(f.windowStart) + ' - ' + formatDuration(f.windowEnd));
       body += docxParagraph('View: ' + f.viewMode + (f.focusHost ? ' | Focus: ' + hostDisplay(f.focusHost) : '') + (f.selectedHost ? ' | Selected: ' + hostDisplay(f.selectedHost) : ''));
       body += docxParagraph('Active filters: ' + (f.filters || 'none'));
-      body += docxImage(rId, idx + 1, imgName);
+      if (f.intel && f.intel.summary) body += docxParagraph('Third-party intel summary: ' + f.intel.summary);
+      if (hasImage) body += docxImage(rId, idx + 1, imgName);
+      else body += docxParagraph('No map image was attached to this automated/text finding.');
       body += docxParagraph('Analyst notes', { bold: true, size: 24 });
       const lines = String(f.notes || 'No notes entered.').split(/\r?\n/);
       for (const line of lines) body += docxParagraph(line || ' ');
@@ -2224,6 +2482,158 @@
     }
   }
 
+
+
+  function setInputTokens(input, values) {
+    if (!input) return;
+    const current = String(input.value || '').split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+    const seen = new Set(current.map(s => s.toLowerCase()));
+    for (const v of values.filter(Boolean)) {
+      if (!seen.has(String(v).toLowerCase())) { current.push(String(v)); seen.add(String(v).toLowerCase()); }
+    }
+    input.value = current.join(' ');
+  }
+
+  function addHostFilter(host, mode = 'any') {
+    if (!host) return;
+    if (mode === 'src') setInputTokens(els.srcFilter, [hostDisplay(host, false), host]);
+    else if (mode === 'dst') setInputTokens(els.dstFilter, [hostDisplay(host, false), host]);
+    else setInputTokens(els.hostFilter, [hostDisplay(host, false), host]);
+    applyFilters(false);
+  }
+
+  function addPortFilterValue(port) {
+    if (!port) return;
+    setInputTokens(els.portFilter, [String(port)]);
+    applyFilters(false);
+  }
+
+  function addProtocolFilterValue(protocol) {
+    if (!protocol) return;
+    state.selectedProtocols.add(String(protocol).toLowerCase());
+    for (const btn of els.protocolChips.querySelectorAll('.chip')) {
+      const value = btn.getAttribute('data-protocol');
+      if (value && String(value).toLowerCase() === String(protocol).toLowerCase()) btn.classList.add('active');
+    }
+    applyFilters(false);
+  }
+
+  function hideContextMenu() { if (els.mapContextMenu) els.mapContextMenu.classList.add('hidden'); }
+
+  function showContextMenu(event) {
+    if (!els.mapContextMenu || !state.capture) return;
+    event.preventDefault();
+    const nodeEl = event.target.closest('.node');
+    const edgeEl = event.target.closest('[data-edge-key]');
+    let title = 'Network map';
+    const actions = [];
+    if (nodeEl) {
+      const host = nodeEl.getAttribute('data-host');
+      title = 'Host: ' + hostDisplay(host);
+      actions.push(['filter-host', 'Add to Any host filter', { host }]);
+      actions.push(['filter-src', 'Add to Source filter', { host }]);
+      actions.push(['filter-dst', 'Add to Destination filter', { host }]);
+      actions.push(['mark-interest', state.devicesOfInterest.has(host) ? 'Unmark Device of Interest' : 'Mark Device of Interest', { host }]);
+      actions.push(['add-finding-object', 'Add this host view to report', { host }]);
+      actions.push(['exclude-host', 'Exclude this host from map', { host }]);
+    } else if (edgeEl) {
+      const src = edgeEl.getAttribute('data-src');
+      const dst = edgeEl.getAttribute('data-dst');
+      const sport = edgeEl.getAttribute('data-sport');
+      const dport = edgeEl.getAttribute('data-dport');
+      const proto = edgeEl.getAttribute('data-service') || edgeEl.getAttribute('data-protocol');
+      title = 'Flow: ' + shortenHost(hostDisplay(src), 22) + ' → ' + shortenHost(hostDisplay(dst), 22);
+      actions.push(['filter-flow', 'Filter this source → destination', { src, dst }]);
+      actions.push(['filter-src', 'Add source host filter', { host: src }]);
+      actions.push(['filter-dst', 'Add destination host filter', { host: dst }]);
+      if (dport || sport) actions.push(['filter-port', 'Add port filter', { port: dport || sport }]);
+      if (proto) actions.push(['filter-protocol', 'Add protocol/service filter', { protocol: proto }]);
+      actions.push(['add-finding-object', 'Add this flow/map to report', { src, dst, proto }]);
+    } else {
+      actions.push(['add-finding-object', 'Add current map to report', {}]);
+      actions.push(['save-png', 'Save current map as PNG', {}]);
+    }
+    els.mapContextMenu.innerHTML = '<div class="context-title">' + escapeHtml(title) + '</div>' + actions.map((a, i) => '<button type="button" data-action="' + a[0] + '" data-index="' + i + '">' + escapeHtml(a[1]) + '</button>').join('');
+    els.mapContextMenu._actions = actions;
+    const x = Math.min(event.clientX, window.innerWidth - 260);
+    const y = Math.min(event.clientY, window.innerHeight - 260);
+    els.mapContextMenu.style.left = x + 'px';
+    els.mapContextMenu.style.top = y + 'px';
+    els.mapContextMenu.classList.remove('hidden');
+  }
+
+  async function handleContextAction(event) {
+    const btn = event.target.closest('button[data-action]');
+    if (!btn || !els.mapContextMenu || !els.mapContextMenu._actions) return;
+    const item = els.mapContextMenu._actions[Number(btn.getAttribute('data-index'))];
+    if (!item) return;
+    const [action, label, data] = item;
+    hideContextMenu();
+    if (action === 'filter-host') addHostFilter(data.host, 'any');
+    else if (action === 'filter-src') addHostFilter(data.host, 'src');
+    else if (action === 'filter-dst') addHostFilter(data.host, 'dst');
+    else if (action === 'filter-flow') { addHostFilter(data.src, 'src'); addHostFilter(data.dst, 'dst'); }
+    else if (action === 'filter-port') addPortFilterValue(data.port);
+    else if (action === 'filter-protocol') addProtocolFilterValue(data.protocol);
+    else if (action === 'mark-interest') { state.selectedHost = data.host; toggleSelectedDeviceInterest(); }
+    else if (action === 'exclude-host') { state.selectedHost = data.host; excludeSelectedFromMap(); }
+    else if (action === 'save-png') savePng();
+    else if (action === 'add-finding-object') {
+      try { await queueFinding(label + ' @ ' + formatDuration(state.currentTime), JSON.stringify(data || {})); els.status.textContent = 'Context finding added to report queue.'; }
+      catch (error) { alert('Could not add context finding: ' + (error && error.message ? error.message : error)); }
+    }
+  }
+
+  async function drawSvgToMovieCanvas() {
+    if (!state.movieCanvas) return;
+    const source = serializeGraphSvg();
+    const svgBlob = new Blob([source], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; }).catch(() => null);
+    try {
+      const ctx = state.movieCanvas.getContext('2d');
+      ctx.clearRect(0, 0, state.movieCanvas.width, state.movieCanvas.height);
+      ctx.drawImage(img, 0, 0, state.movieCanvas.width, state.movieCanvas.height);
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  function preferredMovieMime() {
+    const candidates = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    for (const type of candidates) if (window.MediaRecorder && MediaRecorder.isTypeSupported(type)) return type;
+    return '';
+  }
+
+  async function toggleMovieRecording() {
+    if (!state.capture) return;
+    if (state.movieRecorder && state.movieRecorder.state === 'recording') {
+      state.movieRecorder.stop();
+      return;
+    }
+    if (!window.MediaRecorder) { alert('This browser does not support MediaRecorder.'); return; }
+    state.movieCanvas = document.createElement('canvas');
+    state.movieCanvas.width = state.dimensions.w;
+    state.movieCanvas.height = state.dimensions.h;
+    await drawSvgToMovieCanvas();
+    state.movieChunks = [];
+    const stream = state.movieCanvas.captureStream(12);
+    const mimeType = preferredMovieMime();
+    state.movieRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    state.movieRecorder.ondataavailable = event => { if (event.data && event.data.size) state.movieChunks.push(event.data); };
+    state.movieRecorder.onstop = () => {
+      clearInterval(state.movieTimer); state.movieTimer = null;
+      const type = state.movieRecorder.mimeType || mimeType || 'video/webm';
+      const ext = type.includes('mp4') ? 'mp4' : 'webm';
+      downloadBlob(new Blob(state.movieChunks, { type }), 'pcap-visualizer-recording-' + slugify(new Date().toISOString().slice(0, 19)) + '.' + ext);
+      for (const btn of [els.recordMovie, els.recordMovieInline]) if (btn) { btn.textContent = 'Record Movie'; btn.classList.remove('movie-recording'); }
+      els.status.textContent = 'Network movie recording exported.' + (ext === 'webm' ? ' Browser did not support MP4, so WebM was used.' : '');
+    };
+    state.movieTimer = setInterval(drawSvgToMovieCanvas, 110);
+    state.movieRecorder.start(1000);
+    for (const btn of [els.recordMovie, els.recordMovieInline]) if (btn) { btn.textContent = 'Stop Recording'; btn.classList.add('movie-recording'); }
+    els.status.textContent = 'Recording network diagram movie...';
+  }
+
   function resetView() {
     state.layoutKey = '';
     state.layout.clear();
@@ -2260,6 +2670,7 @@
     els.timeline.addEventListener('input', () => setTime(Number(els.timeline.value), true));
     els.snapshot.addEventListener('click', saveSvg);
     els.savePng.addEventListener('click', savePng);
+    for (const btn of [els.recordMovie, els.recordMovieInline]) if (btn) btn.addEventListener('click', toggleMovieRecording);
     els.exportFindings.addEventListener('click', openFindingsModal);
     for (const btn of [els.addFindingTop, els.addFindingPanel]) if (btn) btn.addEventListener('click', openFindingsModal);
     for (const btn of [els.markInterestTop, els.markInterestPanel]) if (btn) btn.addEventListener('click', toggleSelectedDeviceInterest);
@@ -2270,7 +2681,9 @@
     if (els.lockVault) els.lockVault.addEventListener('click', lockVault);
     if (els.saveIpstackKey) els.saveIpstackKey.addEventListener('click', saveIpstackSettings);
     if (els.lookupIpstack) els.lookupIpstack.addEventListener('click', lookupIpstackPublicIps);
+    if (els.lookupThreatIntel) els.lookupThreatIntel.addEventListener('click', lookupThreatIntel);
     if (els.ipstackKey) els.ipstackKey.addEventListener('input', updateVaultUi);
+    if (els.abuseAuthKey) els.abuseAuthKey.addEventListener('input', updateVaultUi);
     els.cancelFindings.addEventListener('click', closeFindingsModal);
     els.findingsForm.addEventListener('submit', submitFindingsExport);
     els.findingsModal.addEventListener('click', event => { if (event.target === els.findingsModal) closeFindingsModal(); });
@@ -2296,7 +2709,17 @@
       try { els.graphSvg.setPointerCapture(event.pointerId); } catch {}
       event.preventDefault();
     });
-    els.graphSvg.addEventListener('pointerdown', event => { if (event.button !== 0 || event.target.closest('.node')) return; state.isPanning = true; state.panStart = { x: event.clientX, y: event.clientY, px: state.panZoom.x, py: state.panZoom.y }; els.graphSvg.setPointerCapture(event.pointerId); });
+    els.edgesLayer.addEventListener('pointerdown', event => {
+      const edge = event.target.closest('[data-edge-key]');
+      if (!edge || event.button !== 0) return;
+      state.edgeDrag = { key: edge.getAttribute('data-edge-key') };
+      const pt = worldPointFromEvent(event);
+      state.edgeControls.set(state.edgeDrag.key, { x: pt.x, y: pt.y });
+      state.layoutKey = ''; state.needsRender = true;
+      try { els.graphSvg.setPointerCapture(event.pointerId); } catch {}
+      event.preventDefault(); event.stopPropagation();
+    });
+    els.graphSvg.addEventListener('pointerdown', event => { if (event.button !== 0 || event.target.closest('.node') || event.target.closest('[data-edge-key]')) return; state.isPanning = true; state.panStart = { x: event.clientX, y: event.clientY, px: state.panZoom.x, py: state.panZoom.y }; els.graphSvg.setPointerCapture(event.pointerId); });
     els.graphSvg.addEventListener('pointermove', event => {
       if (state.nodeDrag) {
         const pt = worldPointFromEvent(event);
@@ -2307,12 +2730,23 @@
         state.needsRender = true;
         return;
       }
+      if (state.edgeDrag) {
+        const pt = worldPointFromEvent(event);
+        state.edgeControls.set(state.edgeDrag.key, { x: pt.x, y: pt.y });
+        state.layoutKey = ''; state.needsRender = true;
+        return;
+      }
       if (!state.isPanning || !state.panStart) return; setPanZoom({ x: state.panStart.px + event.clientX - state.panStart.x, y: state.panStart.py + event.clientY - state.panStart.y, scale: state.panZoom.scale });
     });
     els.graphSvg.addEventListener('pointerup', event => {
       if (state.nodeDrag) { state.nodeDrag = null; persistFindingsState(); try { els.graphSvg.releasePointerCapture(event.pointerId); } catch {} return; }
+      if (state.edgeDrag) { state.edgeDrag = null; persistFindingsState(); try { els.graphSvg.releasePointerCapture(event.pointerId); } catch {} return; }
       state.isPanning = false; state.panStart = null; try { els.graphSvg.releasePointerCapture(event.pointerId); } catch {}
     });
+    els.graphSvg.addEventListener('contextmenu', showContextMenu);
+    if (els.mapContextMenu) els.mapContextMenu.addEventListener('click', handleContextAction);
+    document.addEventListener('click', event => { if (!event.target.closest('#mapContextMenu')) hideContextMenu(); });
+    window.addEventListener('blur', hideContextMenu);
     els.resetView.addEventListener('click', resetView);
     for (const el of [els.searchText, els.hostFilter, els.srcFilter, els.dstFilter, els.portFilter]) el.addEventListener('input', () => applyFilters(true));
     els.clearFilters.addEventListener('click', clearFilters);
@@ -2375,6 +2809,7 @@
   renderFindingsPanel();
   renderExclusionStatus();
   renderGeoipPanel();
+  renderThreatIntelPanel();
   updateVaultUi();
   updateFocusHostOptions();
   drawGrid();

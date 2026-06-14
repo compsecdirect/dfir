@@ -8,7 +8,7 @@ Replay packet captures as an accelerated **network traffic movie** with persiste
 [![Privacy](https://img.shields.io/badge/Privacy-Local%20First-34D399?logo=firefoxbrowser&logoColor=white)](#privacy-and-security)
 
 ---
-
+![](pcap-visualizer.gif)
 ## 🚀 What it does
 
 ✅ Turns packet capture files into an interactive live network replay with:
@@ -24,7 +24,7 @@ Replay packet captures as an accelerated **network traffic movie** with persiste
 - 🖱️ **Drag-and-pin device placement** that stays fixed while the PCAP plays, pauses, rewinds, or fast-forwards
 - 🚫 **Map exclusions** for hosts, IPs, MACs, and DNS names using pasted CSV/TSV/text lists or imported files
 - ⭐ **Devices of Interest** for analyst triage and reporting
-- 📝 **Queued Findings workflow** with Word-compatible `.docx` export
+- 📝 **Queued Findings workflow** with final CompSec Direct branded Word-compatible `.docx` export
 - 🖼️ **SVG and PNG snapshot export**
 
 ---
@@ -238,3 +238,74 @@ DNS labels are derived from capture contents. The app does not perform live reve
 - Add report templates for different incident types
 - Add timeline bookmarks
 - Add larger capture indexing for very large cases
+
+---
+
+## 🧪 v7 Updates
+
+This version adds analyst-driven map routing, feed-based enrichment, recording, and faster report capture.
+
+### Movable network activity lines
+
+- Drag any visible network activity line or its small handle to reroute the curved connection.
+- Manual line routing persists while the PCAP plays, pauses, rewinds, or fast-forwards.
+- Routed lines are stored in the encrypted local vault after the vault is unlocked.
+
+### Right-click actions for filters and reports
+
+Right-click a device, connection line, label, or empty map area to open the custom map action menu.
+
+Common actions include:
+
+- Add host to the Any Host filter.
+- Add host to Source or Destination filters.
+- Add a connection's port to the Port filter.
+- Add a connection's protocol/service to protocol filters.
+- Mark or unmark a Device of Interest.
+- Exclude a host from the map.
+- Add the selected host, flow, or entire displayed map to the report queue as a PNG finding.
+
+### Movie recording
+
+Use **Record Movie** to record the network diagram while playback runs.
+
+- The app requests MP4 recording first when the browser supports it.
+- Browsers that do not support MP4 MediaRecorder output automatically fall back to WebM.
+- The recording captures the rendered network diagram, including manual node positions, routed lines, labels, and threat markers.
+
+### ipstack security flags
+
+The ipstack enrichment now reads the `security` object when present and displays:
+
+- Threat level
+- Tor flag
+- Proxy flag
+- Proxy type
+- Threat type details when returned by the subscription tier
+
+Security flags are reflected on the network map with highlighted device outlines and warning badges.
+
+### abuse.ch ThreatFox and MalwareBazaar enrichment
+
+The encrypted vault can now store an **abuse.ch Auth-Key**. Use **Lookup abuse.ch Intel** to query deduplicated public IP and DNS indicators from the capture.
+
+The lookup workflow:
+
+1. Extracts public IPv4 addresses and related DNS names from the loaded/filtered capture.
+2. Deduplicates all indicators before making API requests.
+3. Posts browser-side requests to ThreatFox and MalwareBazaar using the stored `Auth-Key` header.
+4. Caches results in the encrypted browser vault.
+5. Marks matching devices on the network map.
+6. Automatically queues matching records as **3rd party network information** findings.
+
+### Third-party information findings
+
+Feed matches are visible in the Findings queue before export. Final report export includes these entries alongside manually queued screenshot findings.
+
+### Host spacing behavior
+
+Host spacing now expands the actual layout canvas instead of increasing node shape thickness. If the diagram becomes larger than the viewport, use wheel zoom, Fit View, or pan controls to navigate the larger map.
+
+### More legible network labels
+
+Connection labels now use larger bold text, stronger backplates, higher contrast, and port/service details on the highest-value visible flows.
