@@ -8,7 +8,8 @@ Replay packet captures as an accelerated **network traffic movie** with persiste
 [![Privacy](https://img.shields.io/badge/Privacy-Local%20First-34D399?logo=firefoxbrowser&logoColor=white)](#privacy-and-security)
 
 ---
-![](pcap-visualizer.gif)
+
+[![Watch the video](pcap-visualizer.png)](https://github.com/user-attachments/assets/02e5a513-ccc0-4043-94eb-45a391357a03)
 ## 🚀 What it does
 
 ✅ Turns packet capture files into an interactive live network replay with:
